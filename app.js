@@ -124,6 +124,8 @@ function migrateDb(db) {
     const c2 = db.find(t => t.id === 'curt'); if (c2 && c2.detRange === 5) c2.detRange = 11;
   }
   for (const id of ['door', 'lock', 'otus', 'push', 'doorplus']) { const d = db.find(t => t.id === id); if (d && d.iconRot === undefined) d.iconRot = true; }
+  // 1.16 : générateur de brouillard
+  if (!db.some(t => t.id === 'fog')) { const ref = (window.DEFAULT_DB || []).find(t => t.id === 'fog'); if (ref) { const i = db.findIndex(t => t.sys !== 'Anti-intrusion'); db.splice(i < 0 ? db.length : i, 0, JSON.parse(JSON.stringify(ref))); } }
   // 1.13 : caméras de vidéoprotection (extérieur) et de vidéosurveillance (intérieur), hors devis
   if (!db.some(t => t.id === 'vpext' || t.id === 'vsint' || t.sys === 'Vidéoprotection'))
     for (const id of ['vpext', 'vsint']) { const ref = (window.DEFAULT_DB || []).find(t => t.id === id); if (ref) db.push(JSON.parse(JSON.stringify(ref))); }
@@ -173,12 +175,12 @@ const allMarkers = () => S.project.levels.flatMap(l => l.markers.map(m => ({ ...
 
 function setDirty(v = true) { S.dirty = v; $('#dirty').hidden = !v; document.title = `${S.project.name}${v ? ' •' : ''} — Blackeyes Implantation`; }
 
-function snapshot() { return JSON.stringify(S.project.levels.map(l => ({ id: l.id, scale: l.scale, markers: l.markers, planRot: l.planRot || 0, planVer: l.planVer || null, kind: l.kind || null }))); }
+function snapshot() { return JSON.stringify(S.project.levels.map(l => ({ id: l.id, scale: l.scale, markers: l.markers, notes: l.notes || [], planRot: l.planRot || 0, planVer: l.planVer || null, kind: l.kind || null }))); }
 function pushHistory() { S.history.push(snapshot()); if (S.history.length > 80) S.history.shift(); S.future = []; updateUndo(); }
 function restore(snap) {
   const data = JSON.parse(snap);
   const rot = [];
-  data.forEach(d => { const l = S.project.levels.find(x => x.id === d.id); if (!l) return; l.markers = d.markers; l.scale = d.scale;
+  data.forEach(d => { const l = S.project.levels.find(x => x.id === d.id); if (!l) return; l.markers = d.markers; l.scale = d.scale; l.notes = d.notes || [];
     if (d.kind) l.kind = d.kind; else delete l.kind;
     // image du plan modifiée (masque, recadrage) : on reprend la version enregistrée
     if (d.planVer && d.planVer !== l.planVer && PLAN_VERS.has(d.planVer)) { const v = PLAN_VERS.get(d.planVer); l.plan = v.plan; if (v.planOrig) l.planOrig = v.planOrig; else delete l.planOrig; if (v.planRot) l.planRot = v.planRot; else delete l.planRot; l.planVer = d.planVer; return; }
@@ -253,6 +255,7 @@ async function setPlanRotation(l, total, moveMarkers = true) {
       m.x = np.w / 2 + dx * cs - dy * sn; m.y = np.h / 2 + dx * sn + dy * cs;
       m.rot = Math.round(((m.rot + d) % 360 + 360) % 360);
     });
+    (l.notes || []).forEach(n => { const dx = n.x - old.w / 2, dy = n.y - old.h / 2; n.x = Math.round(np.w / 2 + dx * cs - dy * sn); n.y = Math.round(np.h / 2 + dx * sn + dy * cs); });
     (S.project.photos || []).filter(p => p.pos && p.pos.levelId === l.id).forEach(p => { const dx = p.pos.x - old.w / 2, dy = p.pos.y - old.h / 2; p.pos.x = Math.round(np.w / 2 + dx * cs - dy * sn); p.pos.y = Math.round(np.h / 2 + dx * sn + dy * cs); });
   }
   if (total === 0) { l.plan = l.planOrig; delete l.planOrig; delete l.planRot; }
@@ -309,6 +312,7 @@ async function cropPlan(r) {
   if (out.length && !(await confirmBox('Recadrer le plan', `${out.length} matériel(s) (${out.map(m => m.label).join(', ')}) se trouvent hors du cadre et seront supprimés. Continuer ?`, 'Recadrer', true))) { S.drag = null; renderOverlay(); return; }
   await editPlanImage(l, r.w, r.h, (g, img) => g.drawImage(img, -r.x, -r.y, l.plan.w, l.plan.h));
   l.markers = l.markers.filter(m => !out.includes(m)).map(m => ({ ...m, x: m.x - r.x, y: m.y - r.y }));
+  l.notes = (l.notes || []).map(n => ({ ...n, x: n.x - r.x, y: n.y - r.y })).filter(n => n.x >= 0 && n.y >= 0 && n.x <= r.w && n.y <= r.h);
   (S.project.photos || []).filter(p => p.pos && p.pos.levelId === l.id).forEach(p => { p.pos.x -= r.x; p.pos.y -= r.y; if (p.pos.x < 0 || p.pos.y < 0 || p.pos.x > r.w || p.pos.y > r.h) p.pos = null; });
   if (out.some(m => m.id === S.selId)) S.selId = null;
   setTool('select'); renderAll(); requestAnimationFrame(fit); toast('Plan recadré (Ctrl+Z pour annuler).');
@@ -363,11 +367,11 @@ function renderPlan() {
 }
 function renderMarkers() {
   const l = level();
-  if (!l) { $('#gZones').innerHTML = $('#gMarkers').innerHTML = $('#gOverlay').innerHTML = $('#gPhotos').innerHTML = $('#gGrid').innerHTML = ''; return; }
+  if (!l) { $('#gZones').innerHTML = $('#gMarkers').innerHTML = $('#gOverlay').innerHTML = $('#gPhotos').innerHTML = $('#gGrid').innerHTML = $('#gNotes').innerHTML = ''; return; }
   $('#gZones').innerHTML = $('#optZones').checked ? l.markers.map(m => zonePath(m, l)).join('') : '';
   const sorted = [...l.markers].sort((a, b) => (a.id === S.selId) - (b.id === S.selId));
   $('#gMarkers').innerHTML = sorted.map(m => markerMarkup(m, l, { selected: m.id === S.selId })).join('');
-  if (typeof renderPhotoLayer === 'function') renderPhotoLayer(); renderOverlay();
+  if (typeof renderPhotoLayer === 'function') renderPhotoLayer(); if (typeof renderNotes === 'function') renderNotes(); renderOverlay();
 }
 function renderOverlay() {
   const l0 = level(); const d = S.drag;
@@ -576,10 +580,11 @@ function renderStatus() {
 
 function renderTool() {
   $$('.tool').forEach(b => b.classList.toggle('on', b.dataset.tool === S.tool));
-  svg().classList.toggle('place', S.tool === 'place' || S.tool === 'photo'); svg().classList.toggle('calib', S.tool === 'calib' || S.tool === 'mask' || S.tool === 'crop');
+  svg().classList.toggle('place', S.tool === 'place' || S.tool === 'photo' || S.tool === 'texte'); svg().classList.toggle('calib', S.tool === 'calib' || S.tool === 'mask' || S.tool === 'crop');
   const bn = $('#modeBanner');
   if (S.tool === 'place') { const t = typeOf(S.placeType); bn.innerHTML = `Placement : <b>${esc(t.nom)}</b> — cliquez sur le plan <button id="bnStop">Terminer (Échap)</button>`; bn.hidden = false; }
   else if (S.tool === 'photo') { const ph = projectPhotos().find(x => x.id === S.placePhoto); bn.innerHTML = `${ph ? `<img class="bn-th" src="${ph.url}" alt="">` : ''}Photo${ph && ph.legende ? ` « ${esc(ph.legende)} »` : ''} : cliquez sur le plan à l'endroit de la prise de vue${S.photoQueue && S.photoQueue.length ? ` (encore ${S.photoQueue.length} ensuite)` : ''} — changez de niveau si besoin <button id="bnStop">Terminer (Échap)</button>`; bn.hidden = false; }
+  else if (S.tool === 'texte') { bn.innerHTML = `Annotation : cliquez sur le plan à l'endroit du texte (cliquez sur une annotation pour la modifier) <button id="bnStop">Terminer (Échap)</button>`; bn.hidden = false; }
   else if (S.tool === 'calib') { bn.innerHTML = `Échelle : cliquez sur ${S.calib && S.calib.a ? 'le second point' : 'le premier point'} d'une cote connue <button id="bnStop">Annuler (Échap)</button>`; bn.hidden = false; }
   else if (S.tool === 'mask') { bn.innerHTML = `Masquer : tracez un rectangle sur la zone à effacer (cartouche, légende, encadré…), plusieurs si besoin <button id="bnStop">Terminer (Échap)</button>`; bn.hidden = false; }
   else if (S.tool === 'crop') { bn.innerHTML = `Recadrer : tracez le cadre de la partie du plan à conserver <button id="bnStop">Annuler (Échap)</button>`; bn.hidden = false; }
@@ -607,6 +612,15 @@ function onPointerDown(e) {
   if (e.button === 1) { startPan(e); return; }
   if (S.tool === 'place') { addMarker(S.placeType, p.x, p.y); return; }
   if (S.tool === 'photo') { placePhotoAt(p); return; }
+  if (S.tool === 'texte') { const hit = e.target.closest('.note'); if (hit) { editNote(hit.dataset.note); return; } addNoteAt(p); return; }
+  const nt = e.target.closest('.note');
+  if (nt) {
+    const n = levelNotes(l).find(x => x.id === nt.dataset.note); if (!n) return;
+    if (S.selId) { S.selId = null; renderMarkers(); renderSide(); }
+    S.noteSel = n.id; renderNotes();
+    S.drag = { mode: 'nmove', n, dx: p.x - n.x, dy: p.y - n.y, started: false, x0: e.clientX, y0: e.clientY };
+    svg().setPointerCapture(e.pointerId); return;
+  }
   const pp = e.target.closest('.ppin');
   if (pp) {
     const ph = projectPhotos().find(x => x.id === pp.dataset.ph); if (!ph) return;
@@ -629,6 +643,7 @@ function onPointerDown(e) {
     svg().setPointerCapture(e.pointerId); return;
   }
   if (S.selId) { S.selId = null; renderMarkers(); renderSide(); }
+  if (S.noteSel) { S.noteSel = null; renderNotes(); }
   startPan(e);
 }
 function startPan(e) { S.drag = { mode: 'pan', x0: e.clientX, y0: e.clientY, vb: { ...S.vb } }; svg().classList.add('panning'); svg().setPointerCapture(e.pointerId); }
@@ -642,6 +657,10 @@ function onPointerMove(e) {
   if (d.mode === 'pan') {
     const k = S.vb.w / svg().clientWidth;
     S.vb.x = d.vb.x - (e.clientX - d.x0) * k; S.vb.y = d.vb.y - (e.clientY - d.y0) * k; applyVb();
+  } else if (d.mode === 'nmove') {
+    if (!can('implanter')) return;
+    if (!d.started) { if (Math.hypot(e.clientX - d.x0, e.clientY - d.y0) < 4) return; pushHistory(); d.started = true; }
+    d.n.x = Math.round(p.x - d.dx); d.n.y = Math.round(p.y - d.dy); setDirty(); renderNotes();
   } else if (d.mode === 'pmove') {
     if (!can('implanter')) return;
     if (!d.started) { if (Math.hypot(e.clientX - d.x0, e.clientY - d.y0) < 4) return; d.started = true; }
@@ -660,6 +679,7 @@ function onPointerMove(e) {
 function onPointerUp() {
   const d = S.drag; S.drag = null; svg().classList.remove('panning');
   if (d && d.mode === 'pmove' && !d.started) { openPhotoView(d.ph.id); return; }
+  if (d && d.mode === 'nmove' && !d.started) { editNote(d.n.id); return; }
   if (d && d.mode === 'rect') { const l = level(); if (!l) return; const r = normRect(d.a, d.b, l); $('#gOverlay').innerHTML = ''; (S.tool === 'crop' ? cropPlan(r) : maskZone(r)).catch(e => toast(e.message, true)); }
 }
 
@@ -877,10 +897,10 @@ function scaleBarSvg(l) {
 }
 async function rasterLevel(l, maxSide = 3600) {
   const types = [...new Set(l.markers.map(m => m.typeId))].map(typeOf);
-  const zones = $('#optZones').checked ? l.markers.map(m => zonePath(m, l)).join('') : '';
+  const zones = (S.exp ? S.exp.zones : $('#optZones').checked) ? l.markers.map(m => zonePath(m, l)).join('') : '';
   const svgStr = `<svg xmlns="${SVGNS}" xmlns:xlink="http://www.w3.org/1999/xlink" width="${l.plan.w}" height="${l.plan.h}" viewBox="0 0 ${l.plan.w} ${l.plan.h}">
     <defs>${defsMarkup(types)}</defs><rect width="100%" height="100%" fill="#fff"/>
-    <image href="${l.plan.dataUrl}" x="0" y="0" width="${l.plan.w}" height="${l.plan.h}"/>${gridMarkup(l)}${zones}${l.markers.map(m => markerMarkup(m, l, { live: false })).join('')}${$('#optPhotos').checked ? photoPinsMarkup(l, false) : ''}${scaleBarSvg(l)}</svg>`;
+    <image href="${l.plan.dataUrl}" x="0" y="0" width="${l.plan.w}" height="${l.plan.h}"/>${gridMarkup(l)}${zones}${l.markers.map(m => markerMarkup(m, l, { live: false })).join('')}${(S.exp ? S.exp.photos : $('#optPhotos').checked) ? photoPinsMarkup(l, false) : ''}${(S.exp ? S.exp.notes : $('#optNotes').checked) && typeof notesMarkup === 'function' ? notesMarkup(l, false) : ''}${scaleBarSvg(l)}</svg>`;
   const url = URL.createObjectURL(new Blob([svgStr], { type: 'image/svg+xml' }));
   try {
     const img = await loadImg(url);
@@ -1017,7 +1037,7 @@ function bind() {
   $('#bExport').onclick = (e) => { e.stopPropagation(); const o = !dd.classList.contains('open'); dd.classList.toggle('open', o); $('#bExport').setAttribute('aria-expanded', o); };
   dd.querySelector('.dd').addEventListener('click', () => { dd.classList.remove('open'); $('#bExport').setAttribute('aria-expanded', false); });
   document.addEventListener('pointerdown', (e) => { if (!dd.contains(e.target)) dd.classList.remove('open'); });
-  $('#bPptx').onclick = () => exportPptx(); $('#bPdf').onclick = () => exportPdf(); $('#bDocx').onclick = () => exportDocx(); $('#bCsv').onclick = exportCsv; $('#bAdmin').onclick = openAdminConsole; $('#bBase').onclick = openDbEditor; $('#bSim').onclick = () => exportSim3d(); $('#bFact').onclick = () => openFacturation(); $('#bUser').onclick = openUserMenu;
+  $('#bPptx').onclick = () => exportPptx(); $('#bPdf').onclick = () => exportPdf(); $('#bPlans').onclick = () => exportPlans(); $('#bDocx').onclick = () => exportDocx(); $('#bCsv').onclick = exportCsv; $('#bAdmin').onclick = openAdminConsole; $('#bBase').onclick = openDbEditor; $('#bSim').onclick = () => exportSim3d(); $('#bFact').onclick = () => openFacturation(); $('#bUser').onclick = openUserMenu;
   $('#bUndo').onclick = undo; $('#bRedo').onclick = redo;
   $('#projName').onchange = (e) => { if (!can('implanter') && !can('plans')) { e.target.value = S.project.name; return; } S.project.name = e.target.value.trim() || 'Projet sans nom'; setDirty(); };
   $('#catSearch').oninput = renderCatalog;
@@ -1031,8 +1051,8 @@ function bind() {
   const sw = $('#stageWrap');
   sw.addEventListener('dragover', (e) => { if (level() && e.dataTransfer.types.includes('text/x-blackeyes')) e.preventDefault(); });
   sw.addEventListener('drop', (e) => { if (!can('implanter')) return; const id = e.dataTransfer.getData('text/x-blackeyes'); if (!id || !level()) return; e.preventDefault(); const p = toPlan(e); addMarker(id, p.x, p.y); });
-  $$('.tool').forEach(b => b.onclick = () => { if (!level()) { toast('Importez d\'abord un plan.', true); return; } if (b.dataset.tool === 'calib' && !need('implanter')) return; setTool(b.dataset.tool); });
-  $('#optZones').onchange = renderMarkers; $('#optPhotos').onchange = () => renderPhotoLayer();
+  $$('.tool').forEach(b => b.onclick = () => { if (!level()) { toast('Importez d\'abord un plan.', true); return; } if ((b.dataset.tool === 'calib' || b.dataset.tool === 'texte') && !need('implanter')) return; setTool(b.dataset.tool); });
+  $('#optZones').onchange = renderMarkers; $('#optPhotos').onchange = () => renderPhotoLayer(); $('#optNotes').onchange = () => renderNotes();
   $('#optSize').oninput = (e) => { if (!can('implanter')) { e.target.value = S.project.markerScale || 1; return; } S.project.markerScale = +e.target.value; setDirty(); renderMarkers(); };
   $('#zIn').onclick = () => { const v = S.vb; if (v) zoomAt(0.8, v.x + v.w / 2, v.y + v.h / 2); };
   $('#zOut').onclick = () => { const v = S.vb; if (v) zoomAt(1.25, v.x + v.w / 2, v.y + v.h / 2); };
@@ -1078,7 +1098,8 @@ function bind() {
     if (ctrl && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); return; }
     if (ctrl && e.key.toLowerCase() === 'd') { e.preventDefault(); duplicateSelected(); return; }
     if (e.key === 'Escape') { if (S.tool !== 'select') { S.photoQueue = null; setTool('select'); } else if (S.selId) { S.selId = null; renderMarkers(); renderSide(); } return; }
-    if (e.key === 'Delete' || e.key === 'Backspace') { deleteSelected(); return; }
+    if (e.key === 'Delete' || e.key === 'Backspace') { if (S.noteSel && !S.selId) { deleteSelectedNote(); return; } deleteSelected(); return; }
+    if (e.key.toLowerCase() === 't' && level() && can('implanter')) setTool(S.tool === 'texte' ? 'select' : 'texte');
     if (e.key.toLowerCase() === 'v') setTool('select');
     if (e.key.toLowerCase() === 'e' && level() && can('implanter')) setTool('calib');
     if (e.key.toLowerCase() === 'f') fit();

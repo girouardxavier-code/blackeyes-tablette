@@ -39,13 +39,16 @@ const STAT_LABEL = { equipe: 'Équipé', en_cours: 'Implantation établie', a_eq
 
 /* ---------------------------------------------------------------- modèle du dossier */
 async function buildDossier(opts) {
-  const x = await docCtx(); const lv = S.project.levels; const types = usedTypes(); const all = allMarkers();
+  const has = (k) => !opts.sel || opts.sel.has(k);
+  const x = await docCtx(); const lv = S.project.levels.filter(l => has('lvl:' + l.id)); const types = usedTypes(); const all = allMarkers();
   const P = []; // pages logiques : { orient, blocks }
   const sec = (orient) => { const s = { orient, blocks: [] }; P.push(s); return s.blocks; };
   // 1. présentation + synthèse
   let b = sec('portrait');
   b.push({ t: 'cover' }, { t: 'toc' });
-  b.push({ t: 'h1', text: '1. Présentation', pageBreak: true });
+  let num = 0; const H = (t) => `${++num}. ${t}`;
+  if (has('pres')) {
+  b.push({ t: 'h1', text: H('Présentation'), pageBreak: true });
   b.push({ t: 'h2', text: '1.1 Site' });
   b.push({ t: 'kv', rows: [...(x.client ? [['Client', x.client]] : []), ['Bâtiment', x.site], ['Adresse', x.adresse || '—'], ...(x.bat ? [['Statut Blackeyes', STAT_LABEL[x.bat.statut] || '—'], ['Alarme existante', x.bat.alarme || '—']] : []), ['Niveaux étudiés', lv.map(l => l.name).join(', ') || '—'], ['Matériels implantés', String(all.length)]] });
   if (x.objet) { b.push({ t: 'h2', text: '1.2 Objet et observations' }); x.objet.split(/\n+/).forEach(p => b.push({ t: 'p', text: p })); }
@@ -64,7 +67,9 @@ async function buildDossier(opts) {
     if (!all.some(m => typeOf(m.typeId).sys === 'Vidéoprotection')) b.push({ t: 'h2', text: 'Vidéoprotection et vidéosurveillance' });
     b.push({ t: 'p', text: `Carte : ${near.length} caméra(s) associée(s) au bâtiment ou à moins de 150 m — ${near.map(({ c, d, dir }) => `${c.nom} (${(CAM_T[c.type] || CAM_T.vp).label.toLowerCase()}${d !== null ? `, ${Math.round(d)} m au ${dir}` : ''}${c.exploitant ? `, ${c.exploitant}` : ''})`).join(' ; ')}.` });
   } }
-  b.push({ t: 'h1', text: '2. Synthèse quantitative', pageBreak: true });
+  }
+  if (has('synth')) {
+  b.push({ t: 'h1', text: H('Synthèse quantitative'), pageBreak: true });
   b.push({ t: 'p', text: `${all.length} matériel(s) répartis sur ${lv.length} niveau(x).`, muted: true });
   b.push({
     t: 'table', head: ['Matériel', 'Système', ...lv.map(l => l.name), 'Total'],
@@ -72,16 +77,17 @@ async function buildDossier(opts) {
     rows: types.map(t => { const per = lv.map(l => l.markers.filter(m => m.typeId === t.id).length); return [t.nom, t.sys, ...per.map(n => n ? String(n) : '—'), String(per.reduce((a, c) => a + c, 0))]; }),
     total: ['Total', '', ...lv.map(l => String(l.markers.length)), String(all.length)]
   });
-  // 2. plans
-  let n = 0;
+  }
+  // plans
+  let n = 0; const planNum = lv.length ? ++num : 0;
   for (const l of lv) {
     n++; b = sec('landscape');
     const r = await rasterLevel(l, 3000);
     const lt = typesOfLevel(l);
-    b.push({ t: 'h1', text: n === 1 ? '3. Plans d\'implantation' : null, sub: `3.${n} ${lvLabel(l)}`, plan: true });
+    b.push({ t: 'h1', text: n === 1 ? `${planNum}. Plans d'implantation` : null, sub: `${planNum}.${n} ${lvLabel(l)}`, plan: true });
     b.push({ t: 'image', url: r.url, w: r.w, h: r.h, caption: `${lvLabel(l)} — ${l.markers.length} matériel(s)${isPhoto(l) ? ' · photo du site, pose indicative' : l.scale ? ' · zones de détection et échelle graphique à l\'échelle du plan' : ' · échelle non définie'}` });
     b = sec('landscape');
-    b.push({ t: 'h2', text: `3.${n} ${lvLabel(l)} — légende et repères`, keep: true });
+    b.push({ t: 'h2', text: `${planNum}.${n} ${lvLabel(l)} — légende et repères`, keep: true });
     if (lt.length) b.push({ t: 'legend', items: lt.map(t => ({ t, n: l.markers.filter(m => m.typeId === t.id).length })) });
     b.push(l.markers.length ? {
       t: 'table', head: ['Repère', 'Matériel', 'Local / pièce', 'Orientation', 'Observations'], widths: [10, 24, 22, 11, 33], align: ['l', 'l', 'l', 'c', 'l'],
@@ -90,7 +96,7 @@ async function buildDossier(opts) {
   }
   // 3. reportage photographique + fiches + visas
   b = sec('portrait');
-  let ch = 4;
+  let ch = num + 1;
   const rp = opts.photos ? reportPhotos() : [];
   if (rp.length) {
     b.push({ t: 'h1', text: `${ch}. Reportage photographique`, pageBreak: true });
@@ -103,12 +109,14 @@ async function buildDossier(opts) {
     types.forEach((t, i) => b.push({ t: 'fiche', type: t, qty: all.filter(m => m.typeId === t.id).length, num: `${ch}.${i + 1}` }));
     ch++;
   }
+  if (has('suivi')) {
   b.push({ t: 'h1', text: `${ch}. Suivi et validation`, pageBreak: !(opts.fiches && types.length) || true });
   b.push({ t: 'h2', text: 'Historique des indices' });
   b.push({ t: 'table', head: ['Indice', 'Date', 'Objet de la modification', 'Établi par'], widths: [12, 16, 50, 22], align: ['c', 'c', 'l', 'l'], rows: [[x.ind, x.date, x.ind === 'A' ? 'Première émission' : 'Mise à jour', x.redac || '']] });
   b.push({ t: 'h2', text: 'Visas' });
   b.push({ t: 'visas', rows: [['Rédigé par', x.redac], ['Vérifié par', x.verif], ['Approuvé par', '']] });
-  return { x, pages: P };
+  }
+  return { x, pages: P.filter(pg => pg.blocks.length) };
 }
 
 /* ---------------------------------------------------------------- rendu Word (.docx) */
@@ -392,23 +400,20 @@ async function exportDocx() {
   const okW = can('exportDocx'), okP = can('exportPdf');
   if (!okW && !okP) { need('exportDocx'); return; }
   if (!requireMarkers()) return;
-  const r = await modal({
-    title: 'Dossier d\'implantation', size: 'md',
-    body: `<p style="margin:0">Dossier complet et homogène : page de garde, sommaire, présentation du site, synthèse quantitative, plans annotés par niveau avec légende et liste des repères, fiches matériels, historique des indices et visas.</p>
-      <div class="field"><span>Format</span>
+  const nph = reportPhotos().length;
+  const r = await chooseExport({ title: 'Dossier d\'implantation', okLabel: 'Générer',
+    intro: 'Page de garde et sommaire, puis les parties cochées ci-dessous. Chaque plan est suivi de sa légende et de la liste de ses repères.',
+    extraHtml: `<div class="field"><span>Format</span>
         <label class="perm"><input type="checkbox" id="dxW" ${okW ? 'checked' : 'disabled'}><div><b>Word (.docx) — modifiable</b><span>Pour compléter, relire et faire viser le dossier.${okW ? '' : ' Droit non accordé.'}</span></div></label>
-        <label class="perm"><input type="checkbox" id="dxP" ${okP ? (okW ? '' : 'checked') : 'disabled'}><div><b>PDF — diffusion</b><span>Version figée, identique au Word, pour transmettre ou imprimer.${okP ? '' : ' Droit non accordé.'}</span></div></label>
-      </div>
-      <label class="chk"><input type="checkbox" id="dxF" checked> Inclure les fiches matériels</label>
-      <label class="chk"><input type="checkbox" id="dxPh" ${reportPhotos().length ? 'checked' : 'disabled'}> Inclure le reportage photographique (${reportPhotos().length} photo(s) cochée(s) « Dans le rapport »)</label>
-      <div class="info">Référence : <b>${esc(S.project.reference || 'non renseignée')}</b> · indice <b>${esc(S.project.indice || 'A')}</b> · établi par <b>${esc(S.project.author || 'non renseigné')}</b>. Ces informations se complètent dans le panneau « Projet ».</div>`,
-    buttons: [{ label: 'Annuler', value: null }, { label: 'Générer', cls: 'primary', action: (root) => {
-      const o = { word: $('#dxW', root).checked, pdf: $('#dxP', root).checked, fiches: $('#dxF', root).checked, photos: $('#dxPh', root).checked };
-      if (!o.word && !o.pdf) { toast('Cochez au moins un format.', true); return false; } return o;
-    } }]
-  });
+        <label class="perm"><input type="checkbox" id="dxP" ${okP ? (okW ? '' : 'checked') : 'disabled'}><div><b>PDF — diffusion</b><span>Version figée, identique au Word.${okP ? '' : ' Droit non accordé.'}</span></div></label></div>`,
+    items: [{ key: 'pres', label: 'Présentation', sub: 'Site, objet, principe du système', icon: '🏢' }, { key: 'synth', label: 'Synthèse quantitative', sub: 'Matériels par niveau', icon: '📊' },
+      ...levelItems(), ...(nph ? [{ key: 'photos', label: 'Reportage photographique', sub: `${nph} photo(s) « Dans le rapport »`, icon: '📷' }] : []),
+      { key: 'fiches', label: 'Fiches matériels', sub: 'Une fiche par matériel utilisé', icon: '📘' }, { key: 'suivi', label: 'Suivi et validation', sub: 'Historique des indices et visas', icon: '✍' }],
+    readExtra: (root) => { const o = { word: $('#dxW', root).checked, pdf: $('#dxP', root).checked }; if (!o.word && !o.pdf) { toast('Cochez au moins un format.', true); return false; } return o; } });
+  if (r) { r.fiches = r.sel.has('fiches'); r.photos = r.sel.has('photos'); }
   if (!r) return;
   toast('Préparation du dossier…');
+  S.exp = r.exp;
   try {
     const model = await buildDossier(r);
     const base = `Dossier ${safeName(model.x.site)}${S.project.reference ? ' ' + safeName(S.project.reference) : ''} ind ${model.x.ind}`;
@@ -423,16 +428,22 @@ async function exportDocx() {
       if (p) toast('Dossier PDF enregistré');
     }
   } catch (e) { console.error(e); toast('Dossier impossible à générer : ' + e.message, true); }
+  finally { S.exp = null; }
 }
 
 /* ---------------------------------------------------------------- PowerPoint modifiable (charte + cartouche) */
 async function exportPptx() {
   if (!need('exportPptx') || !requireMarkers()) return;
+  const nph = reportPhotos().length;
+  const ch = await chooseExport({ title: 'PowerPoint modifiable', intro: 'Une diapositive par élément coché. Les matériels et les annotations restent modifiables dans PowerPoint.',
+    items: [{ key: 'synth', label: 'Synthèse', sub: 'Quantitatif et bâtiment', icon: '📊' }, ...levelItems(), ...(nph ? [{ key: 'photos', label: 'Reportage photographique', sub: `${nph} photo(s), 2 par diapositive`, icon: '📷' }] : [])] });
+  if (!ch) return;
   toast('Génération du PowerPoint…');
+  S.exp = ch.exp;
   try {
     const x = await docCtx(); const acc = x.acc;
     const P = new PptxGenJS(); P.layout = 'LAYOUT_WIDE'; P.author = x.redac || 'Blackeyes Implantation'; P.title = `${x.ch.titre} — ${x.site}`;
-    const W = 13.333; const lvls = S.project.levels; const pages = lvls.length + 1;
+    const W = 13.333; const lvls = S.project.levels.filter(l => ch.sel.has('lvl:' + l.id)); const pages = lvls.length + (ch.sel.has('synth') ? 1 : 0); const p0 = ch.sel.has('synth') ? 2 : 1;
     const logo = x.ch.logo ? await imgSize(x.ch.logo) : null;
     const head = (sl, title) => {
       sl.addShape(P.ShapeType.rect, { x: 0, y: 0, w: W, h: 0.62, fill: { color: DARK }, line: { color: DARK } });
@@ -452,6 +463,7 @@ async function exportPptx() {
       sl.addTable(rows.map(([k, v]) => [{ text: k, options: { bold: true, color: MUTED, fill: { color: SOFT } } }, { text: v }]), { x: 10.4, y: y0, w: 2.65, colW: [0.85, 1.8], rowH: rh, fontFace: FONT, fontSize: 8, color: INK, border: { type: 'solid', pt: 0.5, color: LINE }, valign: 'middle', margin: 0.04, autoPage: false });
     };
     // synthèse
+    if (ch.sel.has('synth')) {
     const s0 = P.addSlide(); s0.background = { color: 'FFFFFF' };
     head(s0, `${x.site} — synthèse`); foot(s0);
     s0.addText([{ text: x.ch.titre, options: { fontSize: 20, bold: true, color: DARK, breakLine: true } }, { text: [x.adresse, `Établi par ${x.redac || '—'}`, x.date].filter(Boolean).join('   ·   '), options: { fontSize: 11, color: MUTED } }], { x: 0.4, y: 0.85, w: 9.8, h: 0.95, fontFace: FONT, valign: 'top' });
@@ -466,6 +478,7 @@ async function exportPptx() {
     s0.addText([{ text: 'BÂTIMENT', options: { bold: true, color: MUTED, fontSize: 8, charSpacing: 2, breakLine: true } }, { text: x.site, options: { bold: true, fontSize: 12, breakLine: true } }, { text: x.adresse || '', options: { color: MUTED, fontSize: 9, breakLine: true } },
       ...(x.bat ? [{ text: ' ', options: { breakLine: true } }, { text: 'Statut : ' + (STAT_LABEL[x.bat.statut] || '—'), options: { fontSize: 9, breakLine: true } }, { text: 'Alarme existante : ' + (x.bat.alarme || '—'), options: { fontSize: 9 } }] : [])], { x: 10.5, y: 0.95, w: 2.45, h: 3.8, fontFace: FONT, color: INK, valign: 'top' });
     cartouche(s0, null, 1);
+    }
     // un plan par niveau
     for (const [li, l] of lvls.entries()) {
       const sl = P.addSlide(); sl.background = { color: 'FFFFFF' };
@@ -474,7 +487,7 @@ async function exportPptx() {
       const ox = ax + (aw - l.plan.w * k) / 2, oy = ay + (ah - l.plan.h * k) / 2;
       sl.addImage({ data: l.plan.dataUrl, x: ox, y: oy, w: l.plan.w * k, h: l.plan.h * k });
       const s = markerSize(l) * k;
-      if ($('#optZones').checked && l.scale) for (const m of l.markers) {
+      if (S.exp.zones && l.scale) for (const m of l.markers) {
         const t = typeOf(m.typeId); const range = m.range ?? t.detRange, ang = m.angle ?? t.detAngle;
         if (!range || m.showZone === false) continue;
         const R = range * l.scale * k; const cx = ox + m.x * k, cy = oy + m.y * k;
@@ -502,6 +515,18 @@ async function exportPptx() {
         const label = m.label || t.code; const lw = Math.max(0.6, label.length * 0.2 + 0.22) * s;
         sl.addText(label, { x: cx - lw / 2, y: cy + s * 0.6, w: lw, h: s * 0.4, fontFace: FONT, fontSize: Math.max(5, s * 72 * 0.29), bold: true, color: 'FFFFFF', align: 'center', valign: 'middle', margin: 0, fill: { color: hex(t.couleur) } });
       }
+      // annotations écrites (zones de texte modifiables) et pastilles des photos
+      if (S.exp.notes) for (const n of (l.notes || [])) {
+        const fsz = noteFont(l, n) * k * 72 * 0.98, lines = String(n.text || '').split('\n');
+        const w = (Math.max(...lines.map(t => t.length), 1) * 0.56 + 0.7) * noteFont(l, n) * k, h = (lines.length * 1.22 + 0.7) * noteFont(l, n) * k;
+        sl.addText(n.text, { x: ox + n.x * k, y: oy + n.y * k, w, h, fontFace: FONT, fontSize: Math.max(5, fsz), bold: true, color: hex(n.couleur || '#c8102e'), valign: 'top', margin: 2,
+          fill: n.fond !== false ? { color: 'FFFFFF', transparency: 10 } : undefined, line: n.fond !== false && n.cadre !== false ? { color: hex(n.couleur || '#c8102e'), width: 1 } : undefined });
+      }
+      if (S.exp.photos && typeof levelPhotos === 'function') levelPhotos(l).forEach((ph, pi) => {
+        const d = s * 0.8, cx = ox + ph.pos.x * k, cy = oy + ph.pos.y * k;
+        sl.addShape(P.ShapeType.ellipse, { x: cx - d / 2, y: cy - d / 2, w: d, h: d, fill: { color: 'EA580C' }, line: { color: 'FFFFFF', width: 1 } });
+        sl.addText(String(pi + 1), { x: cx - d / 2, y: cy - d / 2, w: d, h: d, fontFace: FONT, fontSize: Math.max(5, d * 72 * 0.45), bold: true, color: 'FFFFFF', align: 'center', valign: 'middle', margin: 0 });
+      });
       // échelle graphique
       const sb = scaleBarSpec(l);
       if (sb) {
@@ -523,10 +548,10 @@ async function exportPptx() {
         y += rowH;
       }
       if (!lt.length) sl.addText('Aucun matériel sur ce niveau.', { x: 10.55, y: 1.3, w: 2.4, h: 0.4, fontSize: 9, color: MUTED });
-      cartouche(sl, l, li + 2);
+      cartouche(sl, l, li + p0);
     }
     // reportage photographique : 2 photos par diapositive
-    const rp = reportPhotos();
+    const rp = ch.sel.has('photos') ? reportPhotos() : [];
     for (let i = 0; i < rp.length; i += 2) {
       const sl = P.addSlide(); sl.background = { color: 'FFFFFF' };
       head(sl, `${x.site} — reportage photographique`); foot(sl);
@@ -541,16 +566,21 @@ async function exportPptx() {
     const p = await window.native.saveFile({ purpose: 'pptx', title: 'Exporter en PowerPoint', defaultPath: `Plans ${safeName(x.site)}${S.project.reference ? ' ' + safeName(S.project.reference) : ''} ind ${x.ind}.pptx`, filters: [{ name: 'PowerPoint', extensions: ['pptx'] }], data });
     if (p) toast('PowerPoint exporté');
   } catch (e) { console.error(e); toast('Export PowerPoint impossible : ' + e.message, true); }
+  finally { S.exp = null; }
 }
 
 /* ---------------------------------------------------------------- planches A3 PDF (même charte et cartouche) */
 async function exportPdf() {
   if (!need('exportPdf') || !requireMarkers()) return;
+  const ch = await chooseExport({ title: 'Planches A3', intro: 'Une planche A3 par élément coché, avec légende et cartouche.',
+    items: [{ key: 'synth', label: 'Synthèse', sub: 'Quantitatif par niveau', icon: '📊' }, ...levelItems()] });
+  if (!ch) return;
   toast('Génération des planches A3…');
+  S.exp = ch.exp;
   try {
     const x = await docCtx(); const A = rgb(x.ch.couleur);
     const { jsPDF } = window.jspdf; const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a3' });
-    const PW = 420, PH = 297; const lvls = S.project.levels; const pages = lvls.length + 1;
+    const PW = 420, PH = 297; const lvls = S.project.levels.filter(l => ch.sel.has('lvl:' + l.id)); const syn = ch.sel.has('synth'); const pages = lvls.length + (syn ? 1 : 0); const p0 = syn ? 2 : 1;
     const logo = x.ch.logo ? await imgSize(x.ch.logo) : null;
     const font = (sz, st = 'normal') => { doc.setFont('helvetica', st); doc.setFontSize(sz); };
     const head = (title) => {
@@ -574,6 +604,7 @@ async function exportPdf() {
       });
     };
     // synthèse
+    if (syn) {
     head(`${x.site} — synthèse`); foot();
     doc.setTextColor(18, 26, 38); font(18, 'bold'); doc.text(x.ch.titre, 14, 32);
     font(10); doc.setTextColor(90, 101, 119); doc.text([x.adresse, `Établi par ${x.redac || '—'}`, x.date].filter(Boolean).join('    ·    '), 14, 40);
@@ -595,8 +626,9 @@ async function exportPdf() {
     types.forEach(t => { const per = lvls.map(l => l.markers.filter(m => m.typeId === t.id).length); row([t.nom, t.sys, ...per.map(n => n || '—'), per.reduce((a, b) => a + b, 0)], false); });
     const tot = lvls.map(l => l.markers.length); row(['Total', '', ...tot, tot.reduce((a, b) => a + b, 0)], true, [243, 245, 248]);
     cartouche(null, 1);
+    }
     for (const [li, l] of lvls.entries()) {
-      doc.addPage('a3', 'landscape'); head(`${x.site} — ${lvLabel(l, true)}`); foot();
+      if (syn || li) doc.addPage('a3', 'landscape'); head(`${x.site} — ${lvLabel(l, true)}`); foot();
       const r = await rasterLevel(l);
       const ax = 8, ay = 22, aw = 330, ah = 259; const k = Math.min(aw / r.w, ah / r.h);
       const ix = ax + (aw - r.w * k) / 2, iy = ay + (ah - r.h * k) / 2;
@@ -613,13 +645,14 @@ async function exportPdf() {
         yy += step;
       }
       if (!lt.length) { font(9); doc.text('Aucun matériel sur ce niveau.', 348, 38); }
-      cartouche(l, li + 2);
+      cartouche(l, li + p0);
     }
     doc.setProperties({ title: `${x.ch.titre} — ${x.site}`, author: x.redac || 'Blackeyes Implantation', creator: 'Blackeyes Implantation' });
     const data = new Uint8Array(doc.output('arraybuffer'));
     const p = await window.native.saveFile({ purpose: 'pdf', title: 'Exporter les planches A3', defaultPath: `Planches A3 ${safeName(x.site)}${S.project.reference ? ' ' + safeName(S.project.reference) : ''} ind ${x.ind}.pdf`, filters: [{ name: 'PDF', extensions: ['pdf'] }], data });
     if (p) toast('Planches A3 exportées');
   } catch (e) { console.error(e); toast('Export PDF impossible : ' + e.message, true); }
+  finally { S.exp = null; }
 }
 
 /* ---------------------------------------------------------------- charte (administration) */
@@ -662,4 +695,101 @@ async function openCharteEditor(first = false) {
 async function charteFirstRun() {
   if (S.user?.role !== 'admin') return;
   try { const c = await loadCharte(true); if (!String(c.organisme || '').trim() && !$('#modalRoot').children.length) await openCharteEditor(true); } catch {}
+}
+
+/* ---------------------------------------------------------------- choix des pages à exporter (1.16)
+   items : [{ key, label, sub, level (niveau → aperçu du plan avec ses matériels), checked }] */
+const EXP_DEFAULT = () => ({ zones: $('#optZones').checked, photos: $('#optPhotos').checked, notes: $('#optNotes').checked });
+async function chooseExport({ title, intro = '', extraHtml = '', items, readExtra = () => ({}), okLabel = 'Exporter' }) {
+  const d = EXP_DEFAULT(); const sel = new Set(items.filter(i => i.checked !== false).map(i => i.key));
+  const lvItems = items.filter(i => i.level);
+  const body = `${intro ? `<p style="margin:0">${intro}</p>` : ''}${extraHtml}
+    <div class="ex-head"><b>Pages à inclure</b><span class="btnrow"><button type="button" class="small ghost" data-ex="all">Tout</button><button type="button" class="small ghost" data-ex="none">Aucune</button>${lvItems.length ? '<button type="button" class="small ghost" data-ex="plans">Plans seuls</button>' : ''}</span></div>
+    <div class="ex-grid">${items.map(i => `<label class="ex-card${sel.has(i.key) ? ' on' : ''}" data-key="${esc(i.key)}">
+      <input type="checkbox" data-k="${esc(i.key)}" ${sel.has(i.key) ? 'checked' : ''}>
+      <div class="ex-th">${i.level ? '<span class="muted">Aperçu…</span>' : `<span class="ex-ic">${i.icon || '📄'}</span>`}</div>
+      <div class="ex-tx"><b>${esc(i.label)}</b>${i.sub ? `<small>${esc(i.sub)}</small>` : ''}</div></label>`).join('')}</div>
+    <div class="ex-opts"><b>Sur les plans</b>
+      <label class="chk"><input type="checkbox" id="exZ" ${d.zones ? 'checked' : ''}> Zones de détection</label>
+      <label class="chk"><input type="checkbox" id="exN" ${d.notes ? 'checked' : ''}> Annotations écrites</label>
+      <label class="chk"><input type="checkbox" id="exP" ${d.photos ? 'checked' : ''}> Pastilles des photos</label></div>
+    <p class="muted ex-count" style="margin:0;font-size:12px"></p>`;
+  const r = await modal({ title, size: 'lg', body,
+    onMount: async (root) => {
+      const count = () => { const n = $$('.ex-grid input:checked', root).length; $('.ex-count', root).textContent = `${n} élément(s) sélectionné(s) sur ${items.length}.`; };
+      root.addEventListener('change', (e) => { const k = e.target.dataset.k; if (k) e.target.closest('.ex-card').classList.toggle('on', e.target.checked); count(); if (['exZ', 'exN', 'exP'].includes(e.target.id)) thumbs(); });
+      root.addEventListener('click', (e) => { const a = e.target.closest('[data-ex]')?.dataset.ex; if (!a) return;
+        $$('.ex-grid input', root).forEach(c => { c.checked = a === 'all' || (a === 'plans' && !!lvItems.find(i => i.key === c.dataset.k)); c.closest('.ex-card').classList.toggle('on', c.checked); }); count(); });
+      count();
+      // aperçus : plans avec leurs matériels (et annotations / pastilles selon les cases)
+      let gen = 0;
+      const thumbs = async () => {
+        const my = ++gen; const keep = S.exp;
+        for (const i of lvItems) {
+          if (my !== gen || !root.isConnected) return;
+          S.exp = { zones: $('#exZ', root).checked, notes: $('#exN', root).checked, photos: $('#exP', root).checked };
+          try { const im = await rasterLevel(i.level, 520); const box = $(`.ex-card[data-key="${CSS.escape(i.key)}"] .ex-th`, root); if (box && my === gen) box.innerHTML = `<img src="${im.url}" alt="">`; } catch {} finally { S.exp = keep; }
+        }
+      };
+      thumbs();
+    },
+    buttons: [{ label: 'Annuler', value: null }, { label: okLabel, cls: 'primary', action: (root) => {
+      const keys = new Set($$('.ex-grid input:checked', root).map(c => c.dataset.k));
+      if (!keys.size) { toast('Sélectionnez au moins une page.', true); return false; }
+      const extra = readExtra(root); if (extra === false) return false;
+      return { sel: keys, exp: { zones: $('#exZ', root).checked, notes: $('#exN', root).checked, photos: $('#exP', root).checked }, ...extra };
+    } }] });
+  return r;
+}
+const levelItems = () => S.project.levels.map(l => ({ key: 'lvl:' + l.id, level: l, label: lvLabel(l), sub: `${l.markers.length} matériel(s)${(l.notes || []).length ? ` · ${(l.notes || []).length} annotation(s)` : ''}${typeof levelPhotos === 'function' && levelPhotos(l).length ? ` · ${levelPhotos(l).length} photo(s)` : ''}` }));
+
+/* ---------------------------------------------------------------- plans avec matériels : une page par niveau (PDF) */
+async function exportPlans() {
+  if (!need('exportPdf') || !requireMarkers()) return;
+  const r = await chooseExport({ title: 'Plans avec matériels', okLabel: 'Exporter le PDF',
+    intro: 'Un plan par page, en grand, avec ses matériels, sa légende et un cartouche réduit.',
+    extraHtml: `<div class="row2"><label class="field"><span>Format</span><select id="plF"><option value="a3">A3 paysage</option><option value="a4">A4 paysage</option></select></label>
+      <label class="field"><span>Légende</span><select id="plL"><option value="1">Avec la légende des matériels</option><option value="0">Plan seul</option></select></label></div>`,
+    items: levelItems(), readExtra: (root) => ({ fmt: $('#plF', root).value, legende: $('#plL', root).value === '1' }) });
+  if (!r) return;
+  toast('Génération des plans…');
+  S.exp = r.exp;
+  try {
+    const x = await docCtx(); const A = rgb(x.ch.couleur);
+    const { jsPDF } = window.jspdf; const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: r.fmt });
+    const PW = r.fmt === 'a3' ? 420 : 297, PH = r.fmt === 'a3' ? 297 : 210, M = r.fmt === 'a3' ? 8 : 6;
+    const lv = S.project.levels.filter(l => r.sel.has('lvl:' + l.id));
+    const font = (sz, st = 'normal') => { doc.setFont('helvetica', st); doc.setFontSize(sz); };
+    for (const [i, l] of lv.entries()) {
+      if (i) doc.addPage(r.fmt, 'landscape');
+      const hh = r.fmt === 'a3' ? 12 : 10;
+      doc.setFillColor(15, 23, 36); doc.rect(0, 0, PW, hh, 'F'); doc.setFillColor(...A); doc.rect(0, hh, PW, 0.8, 'F');
+      doc.setTextColor(255); font(r.fmt === 'a3' ? 13 : 11, 'bold'); doc.text(`${x.site} — ${lvLabel(l)}`, M, hh * 0.68);
+      font(8); doc.text(`${x.ch.organisme || ''}${x.ch.organisme ? '  ·  ' : ''}Réf. ${x.ref} · Ind. ${x.ind} · ${x.date}  ·  Page ${i + 1} / ${lv.length}`, PW - M, hh * 0.68, { align: 'right' });
+      const lt = r.legende ? typesOfLevel(l) : [];
+      const legH = lt.length ? (r.fmt === 'a3' ? 16 : 13) : 0;
+      const ay = hh + 3, ah = PH - ay - M - legH - 5, aw = PW - 2 * M;
+      const im = await rasterLevel(l, r.fmt === 'a3' ? 4200 : 3200); const k = Math.min(aw / im.w, ah / im.h);
+      const ix = M + (aw - im.w * k) / 2, iy = ay + (ah - im.h * k) / 2;
+      doc.addImage(im.url, 'JPEG', ix, iy, im.w * k, im.h * k); doc.setDrawColor(214, 220, 229); doc.rect(ix, iy, im.w * k, im.h * k);
+      if (lt.length) {
+        const ly = PH - M - legH, cw = Math.min(62, aw / lt.length); let lx = M;
+        doc.setFillColor(243, 245, 248); doc.rect(M, ly, aw, legH, 'F');
+        for (const t of lt) {
+          const n = l.markers.filter(m => m.typeId === t.id).length; const c = rgb(t.couleur), rr = legH * 0.3;
+          doc.setFillColor(255, 255, 255); doc.setDrawColor(...c); doc.setLineWidth(0.5); doc.circle(lx + rr + 2, ly + legH / 2, rr, 'FD'); doc.setLineWidth(0.2);
+          if (t.img) { try { const s2 = await imgSize(t.img); const b = rr * 1.4, q = Math.min(b / s2.w, b / s2.h); doc.addImage(t.img, 'PNG', lx + rr + 2 - s2.w * q / 2, ly + legH / 2 - s2.h * q / 2, s2.w * q, s2.h * q); } catch {} }
+          doc.setTextColor(18, 26, 38); font(r.fmt === 'a3' ? 8.5 : 7, 'bold'); doc.text(doc.splitTextToSize(t.nom, cw - rr * 2 - 6)[0], lx + rr * 2 + 4, ly + legH / 2 - 0.5);
+          font(r.fmt === 'a3' ? 7.5 : 6.5); doc.setTextColor(90, 101, 119); doc.text(`${t.code} · ${n}`, lx + rr * 2 + 4, ly + legH / 2 + 3.2);
+          lx += cw; if (lx + cw > PW - M + 1) break;
+        }
+      }
+      font(7, 'italic'); doc.setTextColor(200, 16, 46); doc.text(x.ch.mention || '', M, PH - 2.5);
+    }
+    doc.setProperties({ title: `Plans — ${x.site}`, author: x.redac || 'Blackeyes Implantation', creator: 'Blackeyes Implantation' });
+    const data = new Uint8Array(doc.output('arraybuffer'));
+    const p = await window.native.saveFile({ purpose: 'pdf', title: 'Exporter les plans', defaultPath: `Plans ${safeName(x.site)}${S.project.reference ? ' ' + safeName(S.project.reference) : ''} ind ${x.ind}.pdf`, filters: [{ name: 'PDF', extensions: ['pdf'] }], data });
+    if (p) toast(`Plans exportés (${lv.length} page(s))`);
+  } catch (e) { console.error(e); toast('Export des plans impossible : ' + e.message, true); }
+  finally { S.exp = null; }
 }

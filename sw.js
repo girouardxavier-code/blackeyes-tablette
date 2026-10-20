@@ -1,8 +1,8 @@
 /* Blackeyes tablette : fonctionnement hors connexion.
    - application : réseau d'abord (mises à jour immédiates), copie de secours en cache ;
    - tuiles de carte IGN : cache d'abord (carte hors ligne). */
-const APP = 'bk-app-1.0.0', TUILES = 'bk-tuiles';
-self.addEventListener('install', (e) => { self.skipWaiting(); e.waitUntil(caches.open(APP).then(c => c.addAll(["./","./agenda.js","./app.js","./auth-ui.js","./banque.js","./carte.js","./clients.js","./default-batiments.json","./default-charte.json","./default-db.js","./demarrage.js","./dossier.js","./facturation.js","./icone-192.png","./icone-512.png","./index.html","./manifest.webmanifest","./native.js","./pds-images.js","./photos.js","./protocole.js","./styles.css","./tablette.css","./vendor/docx.umd.js","./vendor/jspdf.umd.min.js","./vendor/jszip.min.js","./vendor/leaflet/leaflet.css","./vendor/leaflet/leaflet.js","./vendor/pdf.min.js","./vendor/pdf.worker.min.js","./vendor/pptxgen.bundle.js"]).catch(() => {}))); });
+const APP = 'bk-app-1.1.0', TUILES = 'bk-tuiles';
+self.addEventListener('install', (e) => { self.skipWaiting(); e.waitUntil(caches.open(APP).then(c => c.addAll(["./","./agenda.js","./annotations.js","./app.js","./auth-ui.js","./banque.js","./carte.js","./clients.js","./default-batiments.json","./default-charte.json","./default-db.js","./demarrage.js","./dossier.js","./facturation.js","./icone-192.png","./icone-512.png","./index.html","./manifest.webmanifest","./native.js","./pds-images.js","./photos.js","./protocole.js","./styles.css","./tablette.css","./vendor/docx.umd.js","./vendor/jspdf.umd.min.js","./vendor/jszip.min.js","./vendor/leaflet/leaflet.css","./vendor/leaflet/leaflet.js","./vendor/pdf.min.js","./vendor/pdf.worker.min.js","./vendor/pptxgen.bundle.js"]).catch(() => {}))); });
 self.addEventListener('activate', (e) => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k.startsWith('bk-app-') && k !== APP).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
 self.addEventListener('fetch', (e) => {
   const u = new URL(e.request.url);

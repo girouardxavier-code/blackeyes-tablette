@@ -40,6 +40,7 @@
         <button id="bDocx" role="menuitem"><b>Dossier d'implantation</b><small>Word modifiable et/ou PDF</small></button>
         <button id="bPptx" role="menuitem"><b>PowerPoint</b><small>Planches modifiables</small></button>
         <button id="bPdf" role="menuitem"><b>Planches A3</b><small>PDF prêt à imprimer</small></button>
+        <button id="bPlans" role="menuitem"><b>Plans avec matériels</b><small>PDF, un plan par page (A3 ou A4)</small></button>
         <button id="bCsv" role="menuitem"><b>Quantitatif</b><small>CSV pour Excel</small></button>
       </div>
     </div>
@@ -79,10 +80,12 @@
       <div class="grp">
         <button id="tSelect" class="tool" data-tool="select" title="Sélection / déplacement (V)">Sélection</button>
         <button id="tCalib" class="tool" data-tool="calib" title="Définir l'échelle du plan (E)">Échelle</button>
+        <button id="tText" class="tool" data-tool="texte" title="Annotation écrite sur le plan (T)">✎ Texte</button>
       </div>
       <div class="grp">
         <label class="chk"><input id="optZones" type="checkbox" checked> Zones de détection</label>
         <label class="chk"><input id="optPhotos" type="checkbox" checked> Photos</label>
+        <label class="chk"><input id="optNotes" type="checkbox" checked> Annotations</label>
         <label class="rng">Taille des pictos <input id="optSize" type="range" min="0.4" max="3" step="0.1" value="1"></label>
       </div>
       <div class="grp right">
@@ -102,6 +105,7 @@
         <g id="gZones"></g>
         <g id="gMarkers"></g>
         <g id="gPhotos"></g>
+        <g id="gNotes"></g>
         <g id="gOverlay"></g>
       </svg>
       <div id="empty" class="empty">
