@@ -221,7 +221,7 @@ function pdsRows(key) { const s = PDS.sec; return key ? PDS.d[s][key] : PDS.d[s]
   document.addEventListener('keydown', (e) => {
     if ($('#pdsView').hidden || $('#modalRoot').children.length) return;
     if (e.key === 'Escape') { e.stopPropagation(); closePds(); }
-    if (e.ctrlKey && e.key.toLowerCase() === 's') { e.preventDefault(); e.stopPropagation(); if (can('batiments')) pdsSave(); }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); e.stopPropagation(); if (can('batiments')) pdsSave(); }
   }, true);
 })();
 

@@ -539,3 +539,49 @@ button.wide{width:100%}
 .ex-ic{font-size:34px}
 .ex-tx{padding:7px 9px;display:flex;flex-direction:column;gap:2px}.ex-tx b{font-size:12.5px}.ex-tx small{font-size:11px;color:var(--muted)}
 .ex-opts{display:flex;gap:16px;flex-wrap:wrap;align-items:center;font-size:13px}
+
+/* ---------------------------------------------------------------- assistant d'implantation (Blackeyes 2) */
+.assist-btn{border-color:#c8102e;color:#c8102e;font-weight:600}
+.assist-btn:hover{background:#fdecee;color:#c8102e;border-color:#c8102e}
+.assist-btn.on{background:#c8102e;color:#fff}
+.side .as-head{flex-direction:row;align-items:center;justify-content:space-between;background:#fbf2f3;border-bottom:2px solid #c8102e}
+.as-title{font-weight:700;font-size:14px;color:#c8102e}
+.side .as-tabs{flex-direction:row;gap:4px;padding:8px 10px}
+.as-tabs button{flex:1;padding:6px 4px;font-size:12px;white-space:normal}
+.as-tabs button b{display:inline-block;min-width:18px;padding:0 4px;border-radius:9px;background:var(--bg);color:var(--ink2);font-size:11px}
+.as-tabs button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+.as-tabs button.on b{background:#fff;color:var(--accent)}
+.side .as-opts{padding:8px 14px}
+.side .as-list{gap:4px;padding:8px 10px;max-height:none}
+.as-row{display:flex;gap:8px;align-items:flex-start;padding:6px;border:1px solid var(--line2);border-radius:6px;background:#fff;cursor:pointer}
+.as-row.sel{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
+.as-sw{flex:none;width:14px;height:14px;border-radius:3px;margin-top:8px;border:1px solid rgba(0,0,0,.15)}
+.as-num{flex:none;min-width:22px;height:22px;border-radius:11px;background:#0f1724;color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;margin-top:4px;padding:0 4px}
+.as-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.as-main input,.as-main select{padding:4px 6px;font-size:12px}
+.as-meta{font-size:11px;line-height:1.35}
+.as-pt{display:flex;align-items:center;gap:6px;font-size:12px}
+.as-pt img{width:22px;height:22px;object-fit:contain}
+.as-yn{display:flex;flex-direction:column;gap:3px}
+.as-yn .as-ok{color:#15803d;border-color:#9fd5b0;font-weight:700}
+.as-yn .as-ok:hover{background:#e7f6ec}
+.as-sum{display:flex;flex-wrap:wrap;gap:4px}
+.as-sum span{background:var(--bg);border-radius:10px;padding:2px 8px;font-size:11px}
+.as-mode{background:#fff6db;border:1px solid #f1d58a;border-radius:6px;padding:8px 10px;font-size:12px;display:flex;gap:8px;align-items:center;justify-content:space-between}
+.side .as-foot{flex-direction:row;flex-wrap:wrap;gap:6px}
+.as-steps{margin:6px 0 0;padding-left:20px;font-size:12px;color:var(--ink2)}
+#stage .as-prop,#stage .as-acc{cursor:pointer}
+.rg-wrap{max-height:62vh;overflow:auto;border:1px solid var(--line);border-radius:6px;margin-top:8px}
+table.rg{width:100%;border-collapse:collapse;font-size:12px}
+table.rg th{position:sticky;top:0;background:var(--top);color:#fff;text-align:left;padding:6px 8px;font-weight:600}
+table.rg td{padding:6px 8px;border-top:1px solid var(--line2);vertical-align:top}
+table.rg tbody tr{cursor:pointer}
+table.rg tbody tr:hover{background:var(--accent-soft)}
+table.rg tr.off td{opacity:.45}
+table.rg tr.off td:first-child{opacity:1}
+.rg-mat{display:flex;align-items:center;gap:6px;font-weight:600}
+.rg-mat img{width:22px;height:22px;object-fit:contain}
+.rg-chk label{white-space:normal;align-items:flex-start}
+.rg-chk{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:2px 10px;padding:6px 8px;border:1px solid var(--line2);border-radius:6px;background:var(--bg)}
+
+.v2{display:inline-block;background:#c8102e;color:#fff;border-radius:4px;padding:0 5px;margin-left:2px;font-size:.9em}

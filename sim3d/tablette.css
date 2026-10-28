@@ -1,0 +1,10 @@
+/* Simulation 3D sur tablette */
+html, body { -webkit-text-size-adjust: 100%; overscroll-behavior: none; }
+.map-wrap, .map-wrap * { touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+button, select, label { touch-action: manipulation; }
+.tb-sheet { position: fixed; inset: 0; z-index: 9999; background: rgba(8, 12, 20, .55); display: flex; align-items: center; justify-content: center; }
+.tb-box { background: #fff; color: #0f1724; border-radius: 14px; padding: 22px 24px; width: min(440px, 92vw); box-shadow: 0 20px 60px rgba(0,0,0,.35); display: flex; flex-direction: column; gap: 10px; font: 15px/1.4 -apple-system, system-ui, sans-serif; }
+.tb-box h3 { margin: 0 0 4px; font-size: 18px; }
+.tb-box p { margin: 0 0 6px; }
+.tb-btn { display: block; text-align: center; padding: 13px 16px; border-radius: 10px; border: 1px solid #cbd5e1; background: #f8fafc; font: inherit; font-weight: 600; color: #0f1724; cursor: pointer; }
+.tb-primary { background: #1d4ed8; border-color: #1d4ed8; color: #fff; }

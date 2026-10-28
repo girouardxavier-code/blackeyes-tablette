@@ -11,14 +11,14 @@
 <link rel="stylesheet" href="tablette.css">
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob: https://data.geopf.fr; style-src 'self' 'unsafe-inline'; script-src 'self'; worker-src 'self' blob:; font-src 'self' data:; connect-src 'self' data: blob: https://data.geopf.fr https://api-adresse.data.gouv.fr https://geo.api.gouv.fr">
-<title>Blackeyes Implantation</title>
+<title>Blackeyes 2</title>
 <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 <div id="tbBoot"><b>BLACKEYES</b><p>Démarrage…</p></div>
 <header class="topbar">
-  <div class="brand"><span class="mark">B</span><div><b>BLACKEYES</b><small>Implantation</small></div></div>
+  <div class="brand"><span class="mark">B</span><div><b>BLACKEYES <span class="v2">2</span></b><small>Implantation</small></div></div>
   <div class="proj">
     <input id="projName" type="text" spellcheck="false" aria-label="Nom du projet">
     <span id="dirty" class="dirty" hidden>Non enregistré</span>
@@ -81,6 +81,7 @@
         <button id="tSelect" class="tool" data-tool="select" title="Sélection / déplacement (V)">Sélection</button>
         <button id="tCalib" class="tool" data-tool="calib" title="Définir l'échelle du plan (E)">Échelle</button>
         <button id="tText" class="tool" data-tool="texte" title="Annotation écrite sur le plan (T)">✎ Texte</button>
+        <button id="tAssist" class="assist-btn" title="Proposer des emplacements de matériels à partir du plan (A)">✦ Assistant</button>
       </div>
       <div class="grp">
         <label class="chk"><input id="optZones" type="checkbox" checked> Zones de détection</label>
@@ -102,10 +103,12 @@
         <defs id="defs"></defs>
         <g id="gPlan"></g>
         <g id="gGrid"></g>
+        <g id="gAssistBg"></g>
         <g id="gZones"></g>
         <g id="gMarkers"></g>
         <g id="gPhotos"></g>
         <g id="gNotes"></g>
+        <g id="gAssist"></g>
         <g id="gOverlay"></g>
       </svg>
       <div id="empty" class="empty">
@@ -180,7 +183,7 @@
 </div>
 <div id="authScreen" class="auth" hidden>
   <div class="auth-card">
-    <div class="auth-brand"><span class="mark">B</span><div><b>BLACKEYES</b><small>Implantation</small></div></div>
+    <div class="auth-brand"><span class="mark">B</span><div><b>BLACKEYES <span class="v2">2</span></b><small>Implantation</small></div></div>
     <div id="authBody"></div>
   </div>
   <p class="auth-foot" id="authFoot"></p>

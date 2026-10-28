@@ -17,7 +17,7 @@ const PRESETS = {
 
 function authShow(html) {
   $('#authBody').innerHTML = html;
-  $('#authFoot').innerHTML = `<div>${esc(`Blackeyes Implantation ${S.info?.version || ''}${S.info?.usb ? ' · données sur la clé USB' : ''}`)}</div><div class="credit">Programme créé par Xavier GIROUARD</div>`;
+  $('#authFoot').innerHTML = `<div>${esc(`Blackeyes 2 · version ${S.info?.version || ''}${S.info?.usb ? ' · données sur la clé USB' : ''}`)}</div><div class="credit">Programme créé par Xavier GIROUARD</div>`;
   $('#authScreen').hidden = false;
   const f = $('#authBody input:not([value]), #authBody input[value=""]') || $('#authBody input'); if (f) f.focus();
 }
@@ -74,7 +74,7 @@ async function showLogin(prefill = '') {
     <label class="field"><span>Mot de passe</span><input id="lPw" type="password" autocomplete="current-password" ${mm.pwUsable ? 'placeholder="Mémorisé sur ce poste : laissez vide"' : ''}></label>
     <div class="memo-opts">
       <label class="chk"><input id="lRemL" type="checkbox" ${mm.rememberLogin ? 'checked' : ''}> Mémoriser mon identifiant</label>
-      <label class="chk" title="${mm.pwSupported ? 'Le mot de passe est chiffré par Windows et ne fonctionne que sur ce poste, avec votre session Windows.' : 'Mémorisation du mot de passe non disponible sur ce poste.'}"><input id="lRemP" type="checkbox" ${mm.rememberPw && mm.pwSupported ? 'checked' : ''} ${mm.pwSupported ? '' : 'disabled'}> Mémoriser mon mot de passe sur ce poste</label>
+      <label class="chk" title="${mm.pwSupported ? 'Le mot de passe est chiffré par le système (Windows ou trousseau du Mac) et ne fonctionne que sur ce poste, avec votre session.' : 'Mémorisation du mot de passe non disponible sur ce poste.'}"><input id="lRemP" type="checkbox" ${mm.rememberPw && mm.pwSupported ? 'checked' : ''} ${mm.pwSupported ? '' : 'disabled'}> Mémoriser mon mot de passe sur ce poste</label>
       ${mm.rememberLogin || mm.rememberPw ? '<button class="linkbtn" type="button" id="lForget">Oublier les informations mémorisées</button>' : ''}
     </div>
     <p class="err" hidden></p>
@@ -335,6 +335,7 @@ async function openAdminConsole() {
   });
   render(); load();
   await modal({ title: 'Administration', size: '', body, left: [{ label: 'Base des matériels…', action: () => { openDbEditor(); return false; } },
+    { label: 'Règles d\'implantation…', action: () => { openReglesEditor(); return false; } },
     { label: 'Mot de passe oublié sur une clé Éditeur…', action: () => { resetOnKeyDialog().then(load); return false; } },
     { label: 'Charte des documents…', action: () => { openCharteEditor(); return false; } },
     { label: 'Exporter la configuration éditeurs', action: async () => {

@@ -126,6 +126,8 @@ function migrateDb(db) {
   for (const id of ['door', 'lock', 'otus', 'push', 'doorplus']) { const d = db.find(t => t.id === id); if (d && d.iconRot === undefined) d.iconRot = true; }
   // 1.16 : générateur de brouillard
   if (!db.some(t => t.id === 'fog')) { const ref = (window.DEFAULT_DB || []).find(t => t.id === 'fog'); if (ref) { const i = db.findIndex(t => t.sys !== 'Anti-intrusion'); db.splice(i < 0 ? db.length : i, 0, JSON.parse(JSON.stringify(ref))); } }
+  // 1.17 : pictogramme « Pièce de confinement » (après les matériels anti-agression)
+  if (!db.some(t => t.id === 'pdc')) { const ref = (window.DEFAULT_DB || []).find(t => t.id === 'pdc'); if (ref) { let i = -1; db.forEach((t, k) => { if (t.sys === 'Anti-agression') i = k; }); db.splice(i < 0 ? db.length : i + 1, 0, JSON.parse(JSON.stringify(ref))); } }
   // 1.13 : caméras de vidéoprotection (extérieur) et de vidéosurveillance (intérieur), hors devis
   if (!db.some(t => t.id === 'vpext' || t.id === 'vsint' || t.sys === 'Vidéoprotection'))
     for (const id of ['vpext', 'vsint']) { const ref = (window.DEFAULT_DB || []).find(t => t.id === id); if (ref) db.push(JSON.parse(JSON.stringify(ref))); }
@@ -173,7 +175,7 @@ const marker = () => { const l = level(); return l ? l.markers.find(m => m.id ==
 const markerSize = (l) => Math.max(l.plan.w, l.plan.h) * 0.024 * (S.project.markerScale || 1);
 const allMarkers = () => S.project.levels.flatMap(l => l.markers.map(m => ({ ...m, levelName: l.name })));
 
-function setDirty(v = true) { S.dirty = v; $('#dirty').hidden = !v; document.title = `${S.project.name}${v ? ' •' : ''} — Blackeyes Implantation`; }
+function setDirty(v = true) { S.dirty = v; $('#dirty').hidden = !v; document.title = `${S.project.name}${v ? ' •' : ''} — Blackeyes 2`; }
 
 function snapshot() { return JSON.stringify(S.project.levels.map(l => ({ id: l.id, scale: l.scale, markers: l.markers, notes: l.notes || [], planRot: l.planRot || 0, planVer: l.planVer || null, kind: l.kind || null }))); }
 function pushHistory() { S.history.push(snapshot()); if (S.history.length > 80) S.history.shift(); S.future = []; updateUndo(); }
@@ -258,6 +260,7 @@ async function setPlanRotation(l, total, moveMarkers = true) {
     (l.notes || []).forEach(n => { const dx = n.x - old.w / 2, dy = n.y - old.h / 2; n.x = Math.round(np.w / 2 + dx * cs - dy * sn); n.y = Math.round(np.h / 2 + dx * sn + dy * cs); });
     (S.project.photos || []).filter(p => p.pos && p.pos.levelId === l.id).forEach(p => { const dx = p.pos.x - old.w / 2, dy = p.pos.y - old.h / 2; p.pos.x = Math.round(np.w / 2 + dx * cs - dy * sn); p.pos.y = Math.round(np.h / 2 + dx * sn + dy * cs); });
   }
+  if (typeof asInvalidate === 'function') asInvalidate(l);
   if (total === 0) { l.plan = l.planOrig; delete l.planOrig; delete l.planRot; }
   else { l.plan = np; l.planRot = total; }
 }
@@ -297,6 +300,7 @@ async function editPlanImage(l, W, H, draw) {
   l.plan = { ...l.plan, dataUrl: cv.toDataURL(jpeg ? 'image/jpeg' : 'image/png', 0.92), w: cv.width, h: cv.height };
   delete l.planOrig; delete l.planRot;                       // l'orientation en cours est conservée telle quelle
   l.planVer = uid(); PLAN_VERS.set(l.planVer, { plan: l.plan });
+  if (typeof asInvalidate === 'function') asInvalidate(l);
   setDirty();
 }
 async function maskZone(r) {
@@ -367,11 +371,11 @@ function renderPlan() {
 }
 function renderMarkers() {
   const l = level();
-  if (!l) { $('#gZones').innerHTML = $('#gMarkers').innerHTML = $('#gOverlay').innerHTML = $('#gPhotos').innerHTML = $('#gGrid').innerHTML = $('#gNotes').innerHTML = ''; return; }
+  if (!l) { if ($('#gAssist')) $('#gAssist').innerHTML = $('#gAssistBg').innerHTML = ''; $('#gZones').innerHTML = $('#gMarkers').innerHTML = $('#gOverlay').innerHTML = $('#gPhotos').innerHTML = $('#gGrid').innerHTML = $('#gNotes').innerHTML = ''; return; }
   $('#gZones').innerHTML = $('#optZones').checked ? l.markers.map(m => zonePath(m, l)).join('') : '';
   const sorted = [...l.markers].sort((a, b) => (a.id === S.selId) - (b.id === S.selId));
   $('#gMarkers').innerHTML = sorted.map(m => markerMarkup(m, l, { selected: m.id === S.selId })).join('');
-  if (typeof renderPhotoLayer === 'function') renderPhotoLayer(); if (typeof renderNotes === 'function') renderNotes(); renderOverlay();
+  if (typeof renderPhotoLayer === 'function') renderPhotoLayer(); if (typeof renderNotes === 'function') renderNotes(); if (typeof renderAssist === 'function') renderAssist(); renderOverlay();
 }
 function renderOverlay() {
   const l0 = level(); const d = S.drag;
@@ -442,6 +446,7 @@ function qtyRows(scopeLevels) {
 
 function renderSide() {
   const side = $('#side'); const l = level(); const m = marker();
+  if (!m && S.assist && l && S.assist.levelId === l.id && typeof renderAssistSide === 'function') { renderAssistSide(); return; }
   if (m && l) {
     const t = typeOf(m.typeId);
     const hasZone = !!(t.detRange || m.range); const beam = zoneKind(m) === 'faisceau';
@@ -465,6 +470,7 @@ function renderSide() {
         <label class="field"><span>Angle (°)</span><input id="pAngle" type="number" min="0" max="360" step="0.5" value="${m.angle ?? ''}" placeholder="${t.detAngle ?? '360'}"></label>
       </div>`}
       ${hasZone && !l.scale ? (isPhoto(l) ? '<div class="info">Photo du site : pose indicative. La zone de détection n\'est pas tracée (perspective) ; la flèche indique l\'orientation.</div>' : '<div class="warnbox">Échelle non définie : la zone de détection n\'est pas affichée. Utilisez l\'outil Échelle.</div>') : ''}
+      ${/siren/.test(t.id) ? `<label class="field"><span>Signal à l'alarme</span><select id="pSig"><option value="les2" ${(m.signal || 'les2') === 'les2' ? 'selected' : ''}>Alarme sonore et flashs lumineux</option><option value="son" ${m.signal === 'son' ? 'selected' : ''}>Alarme sonore seulement</option><option value="flash" ${m.signal === 'flash' ? 'selected' : ''}>Flashs lumineux seulement (alarme silencieuse)</option></select></label>` : ''}
       <label class="field"><span>Note</span><textarea id="pNote" placeholder="Hauteur de pose, remarque…">${esc(m.note)}</textarea></label>
       <div class="field"><span>Retourner l'icône</span>
         <div class="btnrow"><button id="pFlipH" class="${m.flipH ? 'on' : ''}" aria-pressed="${!!m.flipH}" title="Retourner horizontalement (H)">↔ Horizontalement</button><button id="pFlipV" class="${m.flipV ? 'on' : ''}" aria-pressed="${!!m.flipV}" title="Retourner verticalement (Maj+H)">↕ Verticalement</button></div></div>
@@ -557,6 +563,7 @@ function bindProps(m, l) {
   $('#pLabel').onchange = (e) => commit(() => (m.label = e.target.value.trim() || m.label));
   $('#pLocal').onchange = (e) => commit(() => (m.local = e.target.value));
   $('#pNote').onchange = (e) => commit(() => (m.note = e.target.value));
+  if ($('#pSig')) $('#pSig').onchange = (e) => commit(() => { if (e.target.value === 'les2') delete m.signal; else m.signal = e.target.value; });
   $('#pZone').onchange = (e) => commit(() => (m.showZone = e.target.checked));
   const num = (v) => v === '' ? null : Math.max(0, parseFloat(v));
   $('#pRange').onchange = (e) => { commit(() => (m.range = num(e.target.value))); renderSide(); };
@@ -599,17 +606,19 @@ function setTool(tool, typeId = null) {
 }
 
 function renderAll() {
+  if (S.assist && !S.project.levels.some(l => l.id === S.assist.levelId) && typeof closeAssistant === 'function') { S.assist = null; const b = $('#tAssist'); if (b) b.classList.remove('on'); }
   renderDefs(); renderLevels(); renderPlan(); renderMarkers(); renderSide(); renderStatus(); renderTool(); updateUndo();
   $('#projName').value = S.project.name; $('#optSize').value = S.project.markerScale || 1;
-  document.title = `${S.project.name}${S.dirty ? ' •' : ''} — Blackeyes Implantation`;
+  document.title = `${S.project.name}${S.dirty ? ' •' : ''} — Blackeyes 2`;
 }
-function selectLevel(id) { S.levelId = id; S.selId = null; if (S.tool === 'calib') setTool('select'); renderPlan(); renderMarkers(); renderSide(); renderStatus(); requestAnimationFrame(fit); }
+function selectLevel(id) { S.levelId = id; S.selId = null; if (S.tool === 'calib') setTool('select'); if (S.assist && typeof asFollowLevel === 'function') asFollowLevel(); renderPlan(); renderMarkers(); renderSide(); renderStatus(); requestAnimationFrame(fit); }
 
 /* ---------------------------------------------------------------- interactions plan */
 function onPointerDown(e) {
   const l = level(); if (!l || e.button === 2) return;
   const p = toPlan(e);
   if (e.button === 1) { startPan(e); return; }
+  if (S.assist && S.tool === 'select' && typeof assistPointerDown === 'function' && assistPointerDown(e, p)) return;
   if (S.tool === 'place') { addMarker(S.placeType, p.x, p.y); return; }
   if (S.tool === 'photo') { placePhotoAt(p); return; }
   if (S.tool === 'texte') { const hit = e.target.closest('.note'); if (hit) { editNote(hit.dataset.note); return; } addNoteAt(p); return; }
@@ -653,6 +662,7 @@ function onPointerMove(e) {
   $('#stCoords').textContent = l.scale ? `x ${(p.x / l.scale).toFixed(1)} m · y ${(p.y / l.scale).toFixed(1)} m` : `x ${Math.round(p.x)} · y ${Math.round(p.y)} px`;
   if (S.tool === 'calib' && S.calib && S.calib.a && !S.calib.b) { S.calib.hover = p; renderOverlay(); }
   const d = S.drag; if (!d) return;
+  if (d.mode.startsWith('a:')) { assistPointerMove(e, p, d); return; }
   if (d.mode === 'rect') { d.b = p; renderOverlay(); return; }
   if (d.mode === 'pan') {
     const k = S.vb.w / svg().clientWidth;
@@ -678,6 +688,7 @@ function onPointerMove(e) {
 }
 function onPointerUp() {
   const d = S.drag; S.drag = null; svg().classList.remove('panning');
+  if (d && d.mode.startsWith('a:')) { assistPointerUp(d); return; }
   if (d && d.mode === 'pmove' && !d.started) { openPhotoView(d.ph.id); return; }
   if (d && d.mode === 'nmove' && !d.started) { editNote(d.n.id); return; }
   if (d && d.mode === 'rect') { const l = level(); if (!l) return; const r = normRect(d.a, d.b, l); $('#gOverlay').innerHTML = ''; (S.tool === 'crop' ? cropPlan(r) : maskZone(r)).catch(e => toast(e.message, true)); }
@@ -1051,6 +1062,7 @@ function bind() {
   const sw = $('#stageWrap');
   sw.addEventListener('dragover', (e) => { if (level() && e.dataTransfer.types.includes('text/x-blackeyes')) e.preventDefault(); });
   sw.addEventListener('drop', (e) => { if (!can('implanter')) return; const id = e.dataTransfer.getData('text/x-blackeyes'); if (!id || !level()) return; e.preventDefault(); const p = toPlan(e); addMarker(id, p.x, p.y); });
+  $('#tAssist').onclick = () => openAssistant().catch(e => toast(e.message, true));
   $$('.tool').forEach(b => b.onclick = () => { if (!level()) { toast('Importez d\'abord un plan.', true); return; } if ((b.dataset.tool === 'calib' || b.dataset.tool === 'texte') && !need('implanter')) return; setTool(b.dataset.tool); });
   $('#optZones').onchange = renderMarkers; $('#optPhotos').onchange = () => renderPhotoLayer(); $('#optNotes').onchange = () => renderNotes();
   $('#optSize').oninput = (e) => { if (!can('implanter')) { e.target.value = S.project.markerScale || 1; return; } S.project.markerScale = +e.target.value; setDirty(); renderMarkers(); };
@@ -1097,8 +1109,10 @@ function bind() {
     if (ctrl && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
     if (ctrl && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); return; }
     if (ctrl && e.key.toLowerCase() === 'd') { e.preventDefault(); duplicateSelected(); return; }
+    if (e.key === 'Escape' && typeof assistEscape === 'function' && assistEscape()) return;
     if (e.key === 'Escape') { if (S.tool !== 'select') { S.photoQueue = null; setTool('select'); } else if (S.selId) { S.selId = null; renderMarkers(); renderSide(); } return; }
     if (e.key === 'Delete' || e.key === 'Backspace') { if (S.noteSel && !S.selId) { deleteSelectedNote(); return; } deleteSelected(); return; }
+    if (e.key.toLowerCase() === 'a' && !ctrl && level() && can('implanter')) { openAssistant().catch(err => toast(err.message, true)); return; }
     if (e.key.toLowerCase() === 't' && level() && can('implanter')) setTool(S.tool === 'texte' ? 'select' : 'texte');
     if (e.key.toLowerCase() === 'v') setTool('select');
     if (e.key.toLowerCase() === 'e' && level() && can('implanter')) setTool('calib');
@@ -1125,12 +1139,26 @@ function bind() {
 })();
 
 /* ---------------------------------------------------------------- export vers le logiciel Blackeyes Simulation 3D */
+/* portes, fenêtres et escaliers repérés par l'assistant d'implantation, transmis à la Simulation 3D */
+function archFromAnalyse(l) {
+  const an = l.analyse; if (!an || !l.scale) return [];
+  const out = []; let np = 0, nf = 0, ne = 0;
+  for (const a of an.acces || []) {
+    if (a.type === 'ignore') continue;
+    if (a.type === 'fenetre') out.push({ id: 'af-' + a.id, typeId: 'arch-fenetre', x: a.x, y: a.y, rot: Math.round(((a.ang % 360) + 360) % 360), w: Math.max(0.6, a.w), label: `F${++nf}` });
+    else out.push({ id: 'ap-' + a.id, typeId: 'arch-porte', x: a.x, y: a.y, rot: Math.round(((a.ang % 360) + 360) % 360), w: Math.max(0.7, Math.min(a.w, 2.4)), label: `P${++np}` });
+  }
+  for (const r of (an.rooms || []).filter(r => r.type === 'escalier')) out.push({ id: 'ae-' + r.id, typeId: 'arch-escalier', x: r.cx, y: r.cy, rot: Math.round(r.ang || 0), w: Math.max(0.9, Math.min(r.larg * 0.9, 3)), d: Math.max(2, Math.min(r.long * 0.9, 8)), label: `E${++ne}` });
+  return out;
+}
 async function exportSim3d() {
   if (!need('projets')) return;
   const lvs = S.project.levels.filter(l => l.kind !== 'photo');
   if (!lvs.length) { toast('Aucun plan à exporter : la simulation 3D s\'appuie sur un plan (pas une photo).', true); return; }
   const sans = lvs.filter(l => !l.scale).map(l => l.name);
+  const nArch = lvs.reduce((n, l) => n + archFromAnalyse(l).length, 0);
   const ok = await modal({ title: 'Exporter vers la Simulation 3D', size: 'sm', body: `<p style="margin:0">Le projet est exporté en scène <b>.bk3d</b> (${lvs.length} plan(s), ${lvs.reduce((n, l) => n + l.markers.length, 0)} matériel(s)), à ouvrir dans le logiciel <b>Blackeyes Simulation 3D</b>.</p>
+    ${nArch ? `<p style="margin:0">${nArch} porte(s), fenêtre(s) et escalier(s) repérés par l'assistant d'implantation sont transmis et rendus en 3D.</p>` : '<p class="muted" style="margin:0">Astuce : lancez l\'assistant d\'implantation pour transmettre aussi les portes, fenêtres et escaliers.</p>'}
     ${sans.length ? `<p class="muted" style="margin:0">Échelle non réglée : ${esc(sans.join(', '))}. Elle pourra être réglée dans la Simulation 3D.</p>` : ''}
     <p class="muted" style="margin:0">Le fichier n'est pas chiffré : conservez-le sur un support maîtrisé.</p>`,
     buttons: [{ label: 'Annuler', value: false }, { label: 'Exporter', cls: 'primary', value: true }] });
@@ -1138,7 +1166,7 @@ async function exportSim3d() {
   const used = new Set(lvs.flatMap(l => l.markers.map(m => m.typeId))); const typeCache = {};
   used.forEach(id => { const { prix, ...t } = typeOf(id); typeCache[id] = t; });
   const scene = { app: 'blackeyes-sim3d', format: 1, source: 'blackeyes-implantation', name: S.project.name, site: S.project.site || '', date: today(), markerScale: S.project.markerScale || 1,
-    levels: lvs.map(l => ({ id: l.id, name: l.name, kind: 'plan', plan: l.plan, scale: l.scale || null, markers: l.markers.map(m => ({ id: m.id, typeId: m.typeId, x: m.x, y: m.y, rot: m.rot || 0, label: m.label, local: m.local || '', ...(m.range != null ? { range: m.range } : {}), ...(m.angle != null ? { angle: m.angle } : {}) })) })),
+    levels: lvs.map(l => ({ id: l.id, name: l.name, kind: 'plan', plan: l.plan, scale: l.scale || null, markers: l.markers.map(m => ({ id: m.id, typeId: m.typeId, x: m.x, y: m.y, rot: m.rot || 0, label: m.label, local: m.local || '', ...(m.range != null ? { range: m.range } : {}), ...(m.angle != null ? { angle: m.angle } : {}), ...(m.signal ? { signal: m.signal } : {}) })).concat(archFromAnalyse(l)) })),
     typeCache, savedAt: new Date().toISOString() };
   try {
     const p = await window.native.saveFile({ purpose: 'sim3d', title: 'Exporter vers Blackeyes Simulation 3D', defaultPath: `${S.project.name}.bk3d`, filters: [{ name: 'Scène Blackeyes Simulation 3D', extensions: ['bk3d'] }], data: strToBytes(JSON.stringify(scene)) });
