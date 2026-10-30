@@ -1,0 +1,15 @@
+/* Ajouts propres à la tablette */
+#tbBoot{position:fixed;inset:0;z-index:100;background:#0f1724;color:#e8edf5;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;font:15px "Segoe UI",system-ui,sans-serif}
+#tbBoot b{font-size:22px;letter-spacing:.5px}#tbBoot p{margin:0;color:#9fb3c8;max-width:80vw;text-align:center}
+.tb-sheet{position:fixed;inset:0;z-index:200;background:rgba(15,23,36,.55);display:flex;align-items:center;justify-content:center;padding:20px}
+.tb-box{background:#fff;color:#0f1724;border-radius:14px;padding:22px;min-width:300px;max-width:440px;display:flex;flex-direction:column;gap:12px;box-shadow:0 20px 50px rgba(0,0,0,.35);font:15px "Segoe UI",system-ui,sans-serif}
+.tb-box h3{margin:0;font-size:18px}.tb-box p{margin:0;color:#475569}
+.tb-btn{display:block;text-align:center;padding:13px 16px;border-radius:10px;border:1px solid #cbd5e1;background:#f8fafc;font-size:16px;cursor:pointer;color:#0f1724}
+.tb-primary{background:#1d4fb8;border-color:#1d4fb8;color:#fff;font-weight:600}
+/* cibles tactiles plus grandes */
+@media (pointer:coarse){ button,select,input{min-height:38px} .cat-item{padding-top:9px;padding-bottom:9px} }
+.tb-sim3d{position:fixed;inset:0;z-index:150;background:#0f1724;display:flex;flex-direction:column}
+.tb-sim3d-bar{display:flex;align-items:center;gap:12px;padding:6px 10px;padding-top:max(6px,env(safe-area-inset-top));background:#0b1220;color:#e8edf5;font:14px "Segoe UI",system-ui,sans-serif}
+.tb-sim3d-bar span{color:#9fb3c8;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tb-sim3d-bar .tb-btn{padding:8px 12px;font-size:13px}
+.tb-sim3d iframe{flex:1;border:0;width:100%;background:#0f1724}

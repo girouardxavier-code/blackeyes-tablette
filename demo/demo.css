@@ -1,0 +1,10 @@
+/* Version de démonstration */
+#demoBar{position:fixed;left:50%;bottom:10px;transform:translateX(-50%);z-index:90;display:flex;align-items:center;gap:10px;padding:6px 8px 6px 14px;border-radius:999px;background:#0f1724;color:#e8edf5;font:12.5px "Segoe UI",system-ui,sans-serif;box-shadow:0 8px 24px rgba(15,23,36,.35);white-space:nowrap;max-width:calc(100vw - 20px)}
+#demoBar b{color:#fff;letter-spacing:.6px;font-size:11.5px;background:#c8102e;padding:3px 8px;border-radius:999px}
+#demoBar span{color:#9fb3c8;overflow:hidden;text-overflow:ellipsis}
+#demoBar button{border:0;border-radius:999px;padding:6px 11px;background:#1e293b;color:#e8edf5;font:inherit;cursor:pointer;min-height:0}
+#demoBar button:hover{background:#334155}
+#demoBar button[data-a=ex]{background:#1d4fb8}
+.demo-steps{padding-left:22px;margin:10px 0 12px}.demo-steps li{margin:0 0 10px;line-height:1.5}
+.demo-steps kbd{border:1px solid #cbd5e1;border-bottom-width:2px;border-radius:4px;padding:0 5px;font-size:12px;background:#f8fafc}
+@media (max-width:1100px){#demoBar span{display:none}}

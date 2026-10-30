@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta name="viewport" content="width=1180, viewport-fit=cover">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0f1724">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Blackeyes Démo">
+<link rel="apple-touch-icon" href="icone-192.png">
+<link rel="stylesheet" href="tablette.css">
+<link rel="stylesheet" href="demo.css">
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; worker-src 'self' blob:; font-src 'self' data:; connect-src 'self' data: blob:; frame-src 'self'">
+<title>Blackeyes 2 — Démonstration</title>
+<link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="tbBoot"><b>BLACKEYES</b><p>Démonstration — démarrage…</p></div>
+<header class="topbar">
+  <div class="brand"><span class="mark">B</span><div><b>BLACKEYES <span class="v2">2</span></b><small>Implantation</small></div></div>
+  <div class="proj">
+    <input id="projName" type="text" spellcheck="false" aria-label="Nom du projet">
+    <span id="dirty" class="dirty" hidden>Non enregistré</span>
+    <span id="usbBadge" class="usb" hidden>Clé USB</span>
+  </div>
+  <nav class="actions">
+    <div class="grp">
+      <button id="bNew" title="Nouveau projet (Ctrl+N)">Nouveau</button>
+      <button id="bOpen" title="Ouvrir un projet (Ctrl+O)">Ouvrir</button>
+      <button id="bSave" title="Enregistrer (Ctrl+S)">Enregistrer</button>
+    </div>
+    <div class="grp">
+      <button id="bImport" class="primary" title="Importer un plan PDF, PowerPoint ou image">Importer<span class="lg"> un plan</span></button>
+      <button id="bImportPhoto" title="Importer une photo du site et y poser les matériels">📷<span class="lg2"> Photo</span></button>
+    </div>
+    <div class="grp dropdown" id="ddExport">
+      <button id="bExport" aria-haspopup="true" aria-expanded="false">Exporter ▾</button>
+      <div class="dd" role="menu">
+        <button id="bDocx" role="menuitem"><b>Dossier d'implantation</b><small>Word modifiable et/ou PDF</small></button>
+        <button id="bPptx" role="menuitem"><b>PowerPoint</b><small>Planches modifiables</small></button>
+        <button id="bPdf" role="menuitem"><b>Planches A3</b><small>PDF prêt à imprimer</small></button>
+        <button id="bPlans" role="menuitem"><b>Plans avec matériels</b><small>PDF, un plan par page (A3 ou A4)</small></button>
+        <button id="bMail" role="menuitem"><b>✉️ Par e-mail (PDF)</b><small>Plans choisis en PDF joint à un nouveau message</small></button>
+        <button id="bPhone" role="menuitem"><b>📱 Sur un téléphone</b><small>QR code : téléchargement des plans choisis</small></button>
+        <button id="bPartages" role="menuitem"><b>📱 Plans partagés</b><small>Autoriser, suspendre, accès hors Wi-Fi</small></button>
+        <button id="bCsv" role="menuitem"><b>Quantitatif</b><small>CSV pour Excel</small></button>
+      </div>
+    </div>
+    <div class="grp">
+      <button id="bClients" title="Clients : bâtiments, projets, devis, factures et rendez-vous de chaque client">👥<span class="lg2"> Clients</span></button>
+      <button id="bAgenda" title="Agenda : rendez-vous, visites, poses, informations">📅<span class="lg2"> Agenda</span><span id="agBadge" class="ag-badge" hidden></span></button>
+      <button id="bCarte" title="Plan de la commune et bâtiments couverts">Carte</button>
+      <button id="bSim" title="Exporter le projet vers le logiciel Blackeyes Simulation 3D (scène .bk3d)">🎬 3D</button>
+    </div>
+    <div class="grp">
+      <button id="bFact" title="Devis et factures" hidden>Devis<span class="lg"> &amp; factures</span></button>
+      <button id="bFiches" title="Fiches des matériels Blackeyes (caractéristiques, pose, fiches scannées)">📄<span class="lg"> Fiches</span></button>
+      <button id="bBase" title="Base des matériels">Base<span class="lg"> de données</span></button>
+      <button id="bAdmin" class="admin" title="Comptes, droits et journal">Admin<span class="lg">istration</span></button>
+    </div>
+    <div class="grp">
+      <button id="bUser" class="userchip" title="Mon compte"><span id="uName"></span><small id="uRole"></small></button>
+    </div>
+  </nav>
+</header>
+
+<main class="layout">
+  <aside class="catalog">
+    <div class="panel-head">
+      <h2>Matériels</h2>
+      <input id="catSearch" type="search" placeholder="Rechercher…" aria-label="Rechercher un matériel">
+    </div>
+    <div id="catList" class="cat-list"></div>
+    <p class="hint">Cliquez sur un matériel puis sur le plan pour le placer, ou faites-le glisser sur le plan. <kbd>Échap</kbd> pour arrêter.</p>
+  </aside>
+
+  <section class="workspace">
+    <div class="levelbar">
+      <div id="levelTabs" class="tabs" role="tablist"></div>
+      <button id="bAddLevel" class="ghost small" title="Ajouter un niveau depuis un plan">+ Niveau</button>
+    </div>
+    <div class="toolbar">
+      <div class="grp">
+        <button id="tSelect" class="tool" data-tool="select" title="Sélection / déplacement (V)">Sélection</button>
+        <button id="tCalib" class="tool" data-tool="calib" title="Définir l'échelle du plan (E)">Échelle</button>
+        <button id="tText" class="tool" data-tool="texte" title="Annotation écrite sur le plan (T)">✎ Texte</button>
+        <button id="tAssist" class="assist-btn" title="Proposer des emplacements de matériels à partir du plan (A)">✦ Assistant</button>
+      </div>
+      <div class="grp">
+        <label class="chk"><input id="optZones" type="checkbox" checked> Zones de détection</label>
+        <label class="chk"><input id="optPhotos" type="checkbox" checked> Photos</label>
+        <label class="chk"><input id="optNotes" type="checkbox" checked> Annotations</label>
+        <label class="rng">Taille des pictos <input id="optSize" type="range" min="0.4" max="3" step="0.1" value="1"></label>
+      </div>
+      <div class="grp right">
+        <button id="bUndo" class="ghost small" title="Annuler (Ctrl+Z)">Annuler</button>
+        <button id="bRedo" class="ghost small" title="Rétablir (Ctrl+Y)">Rétablir</button>
+        <button id="zOut" class="ghost small" title="Zoom arrière">−</button>
+        <span id="zoomVal" class="zoomval">100 %</span>
+        <button id="zIn" class="ghost small" title="Zoom avant">+</button>
+        <button id="zFit" class="ghost small" title="Ajuster le plan à la fenêtre (F)">Ajuster</button>
+      </div>
+    </div>
+    <div id="stageWrap" class="stage-wrap">
+      <svg id="stage" xmlns="http://www.w3.org/2000/svg">
+        <defs id="defs"></defs>
+        <g id="gPlan"></g>
+        <g id="gGrid"></g>
+        <g id="gAssistBg"></g>
+        <g id="gZones"></g>
+        <g id="gMarkers"></g>
+        <g id="gPhotos"></g>
+        <g id="gNotes"></g>
+        <g id="gAssist"></g>
+        <g id="gOverlay"></g>
+      </svg>
+      <div id="empty" class="empty">
+        <h3>Aucun plan</h3>
+        <p>Importez un plan d'architecte (PDF, PowerPoint ou image) pour commencer l'implantation. Chaque page ou diapositive choisie devient un niveau.</p>
+        <div class="btnrow" style="justify-content:center"><button id="bImport2" class="primary">Importer un plan</button><button id="bImportPhoto2">📷 Importer une photo du site</button></div>
+      </div>
+      <div id="modeBanner" class="mode-banner" hidden></div>
+    </div>
+    <div class="statusbar"><span id="stScale"></span><span id="stCoords"></span><span id="stCount"></span></div>
+  </section>
+
+  <aside class="side" id="side"></aside>
+</main>
+
+<div id="bankView" class="carte bank" hidden>
+  <header class="carte-head">
+    <div><h2 id="bkTitle">Banque de données</h2><small id="bkSub"></small></div>
+    <select id="bkScope" title="Changer de banque : client ou un de ses bâtiments"></select>
+    <div class="grp"><button type="button" id="bkAddPh">+ Photos</button><button type="button" id="bkAddDoc">+ Documents</button><button type="button" id="bkAddNote">+ Note</button></div>
+    <div class="grp"><small id="bkSaved" class="bk-saved"></small><button type="button" id="bkClose" class="primary">Fermer</button></div>
+  </header>
+  <div class="bk-body">
+    <div class="bk-main"><div class="bk-bar"><input id="bkQ" type="search" placeholder="Rechercher : titre, référence, niveau, note…" autocomplete="off"><div id="bkFilters" class="bk-filters"></div><div id="bkInfo" class="bk-info"></div></div><div id="bkSelBar" class="bk-selbar" hidden></div><div id="bkGrid" class="bk-grid"></div></div>
+    <aside id="bkDetail" class="bk-side"></aside>
+  </div>
+</div>
+<div id="pdsView" class="carte pds" hidden>
+  <header class="carte-head">
+    <div><h2 id="pdsTitle">Protocole de sûreté</h2><small id="pdsSub"></small></div>
+    <div class="grp"><button type="button" id="pdsPdf" title="Exporter le protocole en PDF (A4 paysage)">Exporter PDF</button><button type="button" id="pdsPptx" title="Exporter le protocole en PowerPoint modifiable">Exporter PowerPoint</button></div>
+    <div class="grp"><button type="button" id="pdsDel" class="danger" hidden>Supprimer</button><button type="button" id="pdsSave" class="primary">Enregistrer</button><button type="button" id="pdsClose">Fermer</button></div>
+  </header>
+  <div class="pds-body"><nav class="pds-navl" id="pdsNav"></nav><div class="pds-form" id="pdsForm"></div></div>
+</div>
+<div id="clientsView" class="carte clients" hidden>
+  <header class="carte-head">
+    <div><h2>Clients</h2><small id="clCount">Bâtiments, projets, devis, factures et rendez-vous par client</small></div>
+    <input id="clQ" class="cl-q" type="search" placeholder="Rechercher partout : client, bâtiment, adresse, projet, n° de devis, rendez-vous…" autocomplete="off">
+    <div class="grp"><button type="button" id="clImport" title="Importer un client exporté depuis une autre clé (fichier .bkdossier)">Importer un dossier…</button><button type="button" id="clRefresh" title="Relire les projets et les données">Actualiser</button><button type="button" id="clClose" class="primary">Fermer</button></div>
+  </header>
+  <div class="cl-body">
+    <aside class="cl-list" id="clList"></aside>
+    <div class="cl-main" id="clMain"></div>
+  </div>
+</div>
+<div id="agendaView" class="carte agenda" hidden>
+  <header class="carte-head">
+    <div><h2>Agenda</h2><small>Rendez-vous, visites, poses et informations</small></div>
+    <div class="grp"><button type="button" id="agPrev" title="Période précédente">‹</button><button type="button" id="agToday">Aujourd'hui</button><button type="button" id="agNext" title="Période suivante">›</button></div>
+    <h3 id="agTitle" class="ag-title"></h3>
+    <div class="grp seg" id="agViews"><button type="button" data-v="mois" class="on">Mois</button><button type="button" data-v="semaine">Semaine</button><button type="button" data-v="liste">Liste</button></div>
+    <div class="grp"><button type="button" id="agNew" class="primary">+ Rendez-vous</button><button type="button" id="agIcs" title="Exporter l'agenda vers Outlook, Google Agenda… (.ics)">Exporter</button><button type="button" id="agClose" class="primary">Fermer l'agenda</button></div>
+  </header>
+  <div class="carte-body">
+    <div class="ag-main" id="agMain"></div>
+    <aside class="carte-side" id="agSide"></aside>
+  </div>
+</div>
+<div id="carteView" class="carte" hidden>
+  <header class="carte-head">
+    <div><h2 id="cTitle">Carte</h2><small>Clients, bâtiments et couverture Blackeyes</small></div>
+    <div class="grp"><select id="cTerr" class="c-terr" title="Client affiché"></select><button type="button" id="cTerrNew" title="Ajouter un client (mairie, bailleur, entreprise…) et sa commune">+ Client</button><button type="button" id="cTerrDel" title="Retirer ce client de la carte">Retirer</button></div>
+    <div class="grp seg"><button type="button" data-base="plan" class="on">Plan</button><button type="button" data-base="photo">Photo aérienne</button></div>
+    <div class="grp"><button type="button" id="cFit">Voir toute la commune</button><button type="button" id="cPrefetch">Préparer hors ligne</button><button type="button" id="cClose" class="primary">Fermer la carte</button></div>
+  </header>
+  <div class="carte-body">
+    <div class="map-wrap"><div id="map"></div><div id="cBanner" class="mode-banner" hidden></div>
+      <div class="c-legend" id="cLegend"></div></div>
+    <aside class="carte-side" id="cSide"></aside>
+  </div>
+</div>
+<div id="authScreen" class="auth" hidden>
+  <div class="auth-card">
+    <div class="auth-brand"><span class="mark">B</span><div><b>BLACKEYES <span class="v2">2</span></b><small>Implantation</small></div></div>
+    <div id="authBody"></div>
+  </div>
+  <p class="auth-foot" id="authFoot"></p>
+</div>
+<div id="modalRoot"></div>
+<div id="toast" class="toast" role="status" hidden></div>
+
+<script src="demarrage.js"></script>
+<script src="native.js"></script>
+</body>
+</html>

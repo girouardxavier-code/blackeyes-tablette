@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta name="viewport" content="width=1180, viewport-fit=cover">
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; worker-src 'self' blob:; font-src 'self' data:; media-src 'self' data: blob:">
+<title>Blackeyes Simulation 3D</title>
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="sim-app.css">
+<link rel="stylesheet" href="tablette.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><span class="mark">B</span><div><b>BLACKEYES</b><small>Simulation 3D</small></div></div>
+  <div class="grp">
+    <button id="bNew" title="Nouvelle scène à partir d'un plan (PDF, PNG, JPG)">Nouveau</button>
+    <button id="bOpen" title="Ouvrir une scène .bk3d (exportée de Blackeyes Implantation ou enregistrée ici)">Ouvrir…</button>
+    <button id="bSave" title="Enregistrer la scène (Ctrl+S)">Enregistrer</button>
+  </div>
+  <div class="proj"><input id="projName" type="text" spellcheck="false" title="Nom de la scène"><span id="dirty" class="dirty" hidden>● modifié</span></div>
+  <div class="grp">
+    <label class="lvsel">Niveau <select id="lvSel"></select></label>
+    <button id="bAddLv" title="Ajouter un autre plan (niveau) à la scène">+ Plan</button>
+    <button id="bScale" title="Régler l'échelle : deux clics sur une cote connue (touche E)">📏 Échelle</button>
+    <button id="bInt" title="Intégrer au plan : porte (simple, d'entrée, vitrée, double), fenêtre, escalier, effacer ou ajouter un mur">➕ Intégrer</button>
+    <button id="bZone" title="Sélectionner la ou les zones du plan où la 3D fait apparaître murs, portes, fenêtres et escaliers (touche S)">▭ Sélectionner</button>
+  </div>
+  <div class="grp" style="margin-left:auto">
+    <button id="bHelp" class="ghost" title="Aide">?</button>
+    <button id="bSim" class="primary big">🎬 Lancer la simulation 3D</button>
+  </div>
+</header>
+
+<main class="work">
+  <aside class="pal" id="pal"></aside>
+  <section class="stage-wrap" id="stageWrap">
+    <svg id="stage" xmlns="http://www.w3.org/2000/svg"></svg>
+    <div id="banner" class="mode-banner" hidden></div>
+    <div class="stage-hint" id="hint"></div>
+  </section>
+  <aside class="side" id="side"></aside>
+</main>
+
+<div id="home" class="home">
+  <div class="home-card">
+    <div class="home-brand"><span class="mark">B</span><div><b>BLACKEYES</b><small>Simulation 3D</small></div></div>
+    <p class="home-lead">Simulez une intrusion, la détection, l'alarme et le confinement d'une salle en 3D, à partir d'un plan.</p>
+    <div class="home-acts">
+      <button id="hOpen" class="primary big">📂 Ouvrir une scène (.bk3d)</button>
+      <button id="hNew" class="big">🗺️ Nouvelle scène à partir d'un plan</button>
+    </div>
+    <p class="muted home-tip">Depuis <b>Blackeyes Implantation</b>, le bouton « 🎬 3D » exporte le projet ouvert en scène .bk3d, prête à être simulée ici. Vous pouvez aussi glisser un fichier sur cette fenêtre.</p>
+  </div>
+  <p class="credit" id="credit">Programme créé par Xavier GIROUARD</p>
+</div>
+
+<div id="simView" class="carte sim" hidden>
+  <header class="carte-head">
+    <div><h2 id="sTitle">Simulation 3D</h2><small>Scénarios d'intrusion et de confinement sur le plan</small></div>
+    <div class="grp seg" id="sCamSeg"><button type="button" data-cam="orbit" class="on">Vue libre</button><button type="button" data-cam="follow">Suivre l'individu</button><button type="button" data-cam="top">Vue de dessus</button></div>
+    <div class="grp"><button type="button" id="sClose" class="primary">Revenir au plan</button></div>
+  </header>
+  <div class="carte-body">
+    <div class="map-wrap"><div id="s3d"></div><div id="sBanner" class="mode-banner" hidden></div><div id="sHud" class="sim-hud"></div><div id="sFlash" class="sim-flash"></div><div id="sPop" class="sim-pop"></div></div>
+    <aside class="carte-side" id="sSide"></aside>
+  </div>
+</div>
+<div id="modalRoot"></div>
+<div id="toast" class="toast" role="status" hidden></div>
+
+<script src="native-web.js"></script>
+<script src="vendor/pdf.min.js"></script>
+<script src="vendor/jszip.min.js"></script>
+<script src="vendor/three.min.js"></script>
+<script src="default-db.js"></script>
+<script src="app.js"></script>
+<script src="sim3d.js"></script>
+</body>
+</html>
