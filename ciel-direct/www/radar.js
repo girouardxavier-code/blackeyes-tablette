@@ -113,24 +113,27 @@
       return await r.json();
     } finally { clearTimeout(t); }
   }
+  function fromAdsb(list) {
+    const now = Date.now();
+    return (list || []).filter((a) => a.lat != null && a.lon != null).map((a) => {
+      const ground = a.alt_baro === 'ground';
+      const hex = String(a.hex || '').replace('~', '').toLowerCase();
+      return {
+        id: String(a.hex).toLowerCase(), hex, callsign: (a.flight || '').trim(), reg: a.r || '', type: a.t || '', typeName: a.desc || '',
+        operator: a.ownOp || '', country: countryOf(hex), lat: a.lat, lon: a.lon,
+        alt: ground ? 0 : (typeof a.alt_baro === 'number' ? a.alt_baro : a.alt_geom ?? null), ground,
+        gs: a.gs ?? null, track: a.track ?? a.true_heading ?? a.mag_heading ?? null, vs: a.baro_rate ?? a.geom_rate ?? null,
+        squawk: a.squawk || '', fix: now - (a.seen_pos ?? a.seen ?? 0) * 1000, src: 'adsblol'
+      };
+    });
+  }
   const sources = {
     adsblol: {
       label: 'ADSB.lol · direct', interval: 6000, live: true,
       async fetch() {
         const { c, rNm } = viewQuery();
         const j = await getJSON(`https://api.adsb.lol/v2/point/${c.lat.toFixed(4)}/${c.lng.toFixed(4)}/${rNm}`);
-        const now = Date.now();
-        return (j.ac || []).filter((a) => a.lat != null && a.lon != null).map((a) => {
-          const ground = a.alt_baro === 'ground';
-          const hex = String(a.hex || '').replace('~', '').toLowerCase();
-          return {
-            id: String(a.hex).toLowerCase(), hex, callsign: (a.flight || '').trim(), reg: a.r || '', type: a.t || '', typeName: a.desc || '',
-            operator: a.ownOp || '', country: countryOf(hex), lat: a.lat, lon: a.lon,
-            alt: ground ? 0 : (typeof a.alt_baro === 'number' ? a.alt_baro : a.alt_geom ?? null), ground,
-            gs: a.gs ?? null, track: a.track ?? a.true_heading ?? a.mag_heading ?? null, vs: a.baro_rate ?? a.geom_rate ?? null,
-            squawk: a.squawk || '', fix: now - (a.seen_pos ?? a.seen ?? 0) * 1000, src: 'adsblol'
-          };
-        });
+        return fromAdsb(j.ac);
       }
     },
     opensky: {
@@ -354,8 +357,9 @@
   function updateCard() {
     const p = planes.get(selected); if (!p) return;
     const d = p.d, em = EMERG[d.squawk];
-    $('cCall').textContent = d.callsign || d.reg || d.hex.toUpperCase();
-    $('cSub').textContent = [d.operator, d.typeName || d.type].filter(Boolean).join(' · ') || 'Informations limitées';
+    const fno = flightNo(d.callsign);
+    $('cCall').textContent = fno ? fno.no : d.callsign || d.reg || d.hex.toUpperCase();
+    $('cSub').textContent = [fno && `Indicatif ${d.callsign}`, d.operator || (fno && fno.nom), d.typeName || d.type].filter(Boolean).join(' · ') || 'Informations limitées';
     const badge = $('cBadge');
     badge.className = 'badge' + (em ? ' emerg' : d.ground ? ' ground' : '');
     badge.textContent = em ? `${d.squawk} · ${em}` : d.ground ? 'Au sol' : d.vs > 300 ? 'En montée' : d.vs < -300 ? 'En descente' : 'En croisière';
@@ -479,32 +483,84 @@
 
   /* ---------- Recherche ---------- */
   const q = $('q'), qres = $('qres');
-  let hits = [], hi = 0;
+  let hits = [], hi = 0, remote = [], rTimer = null, rSeq = 0, rState = '';
+  /* Numéros de vol : TO3018 (code IATA de la compagnie) = indicatif radio TVF3018 (code OACI). */
+  const CIE = new Map(), CIE_OACI = new Map();
+  for (const [iata, oaci, nom] of D.compagnies || []) for (const o of oaci.split(' ')) {
+    if (!CIE.has(iata)) CIE.set(iata, []); CIE.get(iata).push(o); if (!CIE_OACI.has(o)) CIE_OACI.set(o, { iata, nom });
+  }
+  const norm = (v) => String(v || '').toUpperCase().replace(/[\s-]/g, '');
+  /* indicatifs radio possibles pour la saisie : [ { cie: 'TVF', num: '3018' } ] */
+  function flightKeys(s) {
+    const out = [];
+    let m = s.match(/^([A-Z]{3})(\d{1,4}[A-Z]{0,2})$/);
+    if (m) out.push({ cie: m[1], num: m[2] });
+    m = s.match(/^([A-Z][A-Z0-9]|[0-9][A-Z])(\d{1,4}[A-Z]?)$/);
+    if (m && CIE.has(m[1])) for (const o of CIE.get(m[1])) out.push({ cie: o, num: m[2] });
+    return out;
+  }
+  const numEq = (a, b) => a.replace(/^0+/, '') === b.replace(/^0+/, '');
+  const matchesKey = (cs, keys) => { cs = norm(cs); return keys.some((k) => cs.startsWith(k.cie) && numEq(cs.slice(k.cie.length), k.num)); };
+  /* TVF3018 → « TO3018 · Transavia France » */
+  function flightNo(cs) {
+    cs = norm(cs); const c = CIE_OACI.get(cs.slice(0, 3)), n = cs.slice(3);
+    return c && /^\d{1,4}[A-Z]?$/.test(n) ? { no: c.iata + n.replace(/^0+(?=\d)/, ''), nom: c.nom } : null;
+  }
+  const acTitle = (d) => { const f = flightNo(d.callsign); return f ? `${f.no} — ${d.callsign}` : d.callsign || d.reg || d.hex.toUpperCase(); };
+  const acLine = (d) => { const f = flightNo(d.callsign); return [f && f.nom, d.type, d.reg, fmt.alt(d)].filter(Boolean).join(' · '); };
+  function render() {
+    const all = hits.concat(remote.filter((r) => !hits.some((h) => h.d && h.d.id === r.d.id)));
+    hits = all; hi = 0;
+    qres.innerHTML = all.map((h, i) => h.kind === 'apt'
+      ? `<li data-i="${i}" class="${i ? '' : 'sel'}"><span>◉ ${esc(h.a[0])} — ${esc(h.a[2])}</span><small>Aéroport</small></li>`
+      : `<li data-i="${i}" class="${i ? '' : 'sel'}"><span>✈ ${esc(acTitle(h.d))}${h.kind === 'remote' ? '<em>hors de la carte</em>' : ''}</span><small>${esc(acLine(h.d))}</small></li>`).join('')
+      + (rState === 'busy' ? '<li class="muted">Recherche dans le monde entier…</li>' : '')
+      || `<li class="muted">${rState === 'none' ? 'Aucun avion en vol avec ce numéro ou cet indicatif' : 'Aucun résultat'}</li>`;
+    qres.hidden = false;
+  }
   function search() {
-    const s = q.value.trim().toUpperCase();
+    const raw = q.value.trim().toUpperCase(), s = norm(raw);
+    clearTimeout(rTimer); rSeq++; remote = []; rState = '';
     if (s.length < 2) { qres.hidden = true; return; }
+    const keys = flightKeys(s);
     hits = [];
     for (const p of planes.values()) {
       const d = p.d;
-      if ([d.callsign, d.reg, d.hex.toUpperCase(), d.type].some((v) => v && v.toUpperCase().includes(s))) hits.push({ kind: 'ac', d });
+      if (matchesKey(d.callsign, keys) || [d.callsign, d.reg, d.hex.toUpperCase(), d.type].some((v) => v && norm(v).includes(s))) hits.push({ kind: 'ac', d });
       if (hits.length >= 12) break;
     }
     for (const a of D.aeroports) {
       if (hits.length >= 18) break;
-      if (a[0] === s || a[1] === s || a[2].toUpperCase().includes(s)) hits.push({ kind: 'apt', a });
+      if (a[0] === s || a[1] === s || a[2].toUpperCase().includes(raw)) hits.push({ kind: 'apt', a });
     }
-    hi = 0;
-    qres.innerHTML = hits.map((h, i) => h.kind === 'ac'
-      ? `<li data-i="${i}" class="${i ? '' : 'sel'}"><span>✈ ${esc(h.d.callsign || h.d.reg || h.d.hex.toUpperCase())}</span><small>${esc([h.d.type, h.d.reg, fmt.alt(h.d)].filter(Boolean).join(' · '))}</small></li>`
-      : `<li data-i="${i}" class="${i ? '' : 'sel'}"><span>◉ ${esc(h.a[0])} — ${esc(h.a[2])}</span><small>Aéroport</small></li>`).join('')
-      || '<li class="muted">Aucun résultat dans la zone chargée</li>';
-    qres.hidden = false;
+    // pas trouvé dans la zone affichée : recherche mondiale (numéro de vol, indicatif ou immatriculation)
+    const isReg = /^[A-Z0-9]{1,2}-[A-Z0-9]{2,5}$/.test(raw) || /^N\d[0-9A-Z]{1,4}$/.test(s);
+    if (S.source !== 'sim' && (keys.length || isReg) && !hits.some((h) => h.kind === 'ac')) {
+      rState = 'busy'; const my = rSeq;
+      rTimer = setTimeout(async () => {
+        const urls = keys.length
+          ? [...new Set(keys.flatMap((k) => [k.cie + k.num, k.cie + k.num.replace(/^0+(?=\d)/, '')]))].slice(0, 4).map((c) => `https://api.adsb.lol/v2/callsign/${c}`)
+          : [`https://api.adsb.lol/v2/reg/${raw}`];
+        const res = await Promise.all(urls.map((u) => getJSON(u).then((j) => fromAdsb(j.ac), () => null)));
+        if (my !== rSeq) return;
+        const seen = new Set();
+        remote = res.flat().filter((d) => d && !seen.has(d.id) && seen.add(d.id)).map((d) => ({ kind: 'remote', d }));
+        rState = remote.length ? '' : res.every((r) => r === null) ? 'err' : 'none';
+        hits = hits.filter((h) => h.kind !== 'remote'); render();
+        if (rState === 'err') toast('Recherche mondiale indisponible (réseau).');
+      }, 450);
+    }
+    render();
   }
   function choose(i) {
     const h = hits[i]; if (!h) return;
     qres.hidden = true; q.value = ''; q.blur();
-    if (h.kind === 'ac') select(h.d.id, true);
-    else map.setView([h.a[3], h.a[4]], 10);
+    if (h.kind === 'apt') return map.setView([h.a[3], h.a[4]], 10);
+    if (planes.has(h.d.id)) return select(h.d.id, true);
+    // avion hors de la zone : on y va, puis il est sélectionné au prochain chargement
+    pendingHash = h.d.id; map.setView([h.d.lat, h.d.lon], 8);
+    toast(`Recherche de ${h.d.callsign || h.d.reg || h.d.hex.toUpperCase()}…`);
+    refresh();
   }
   q.addEventListener('input', search);
   q.addEventListener('keydown', (e) => {

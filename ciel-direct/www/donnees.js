@@ -96,6 +96,34 @@ window.CD_DATA = {
     [0xE40000, 0xE7FFFF, 'Brésil'], [0xE00000, 0xE3FFFF, 'Argentine'], [0xC80000, 0xC87FFF, 'Nouvelle-Zélande']
   ],
 
+  // Compagnies réelles : code IATA (numéro de vol, ex. TO3018) → code(s) OACI (indicatif radio, ex. TVF3018)
+  compagnies: [
+    ['AF', 'AFR', 'Air France'], ['TO', 'TVF', 'Transavia France'], ['HV', 'TRA', 'Transavia'], ['A5', 'HOP', 'Air France Hop'],
+    ['U2', 'EZY EJU EZS', 'easyJet'], ['FR', 'RYR', 'Ryanair'], ['VY', 'VLG', 'Vueling'], ['V7', 'VOE', 'Volotea'],
+    ['W6', 'WZZ', 'Wizz Air'], ['W4', 'WMT', 'Wizz Air Malta'], ['W9', 'WUK', 'Wizz Air UK'], ['SS', 'CRL', 'Corsair'],
+    ['BF', 'FBU', 'French bee'], ['TX', 'FWI', 'Air Caraïbes'], ['XK', 'CCM', 'Air Corsica'], ['UU', 'REU', 'Air Austral'],
+    ['TN', 'THT', 'Air Tahiti Nui'], ['5O', 'FPO', 'ASL Airlines France'], ['T7', 'TJT', 'Twin Jet'], ['CE', 'CLG', 'Chalair'],
+    ['KL', 'KLM', 'KLM'], ['LH', 'DLH', 'Lufthansa'], ['LX', 'SWR', 'Swiss'], ['OS', 'AUA', 'Austrian'], ['SN', 'BEL', 'Brussels Airlines'],
+    ['EW', 'EWG', 'Eurowings'], ['DE', 'CFG', 'Condor'], ['X3', 'TUI', 'TUIfly'], ['BY', 'TOM', 'TUI Airways'], ['EN', 'DLA', 'Air Dolomiti'],
+    ['BA', 'BAW', 'British Airways'], ['LS', 'EXS', 'Jet2'], ['LM', 'LOG', 'Loganair'], ['EI', 'EIN', 'Aer Lingus'],
+    ['IB', 'IBE', 'Iberia'], ['I2', 'IBS', 'Iberia Express'], ['UX', 'AEA', 'Air Europa'], ['NT', 'IBB', 'Binter'],
+    ['TP', 'TAP', 'TAP Air Portugal'], ['AZ', 'ITY', 'ITA Airways'], ['LG', 'LGL', 'Luxair'], ['2L', 'OAW', 'Helvetic'],
+    ['SK', 'SAS', 'SAS'], ['AY', 'FIN', 'Finnair'], ['DY', 'NOZ NAX', 'Norwegian'], ['D8', 'NSZ', 'Norwegian'], ['FI', 'ICE', 'Icelandair'],
+    ['LO', 'LOT', 'LOT'], ['OK', 'CSA', 'Czech Airlines'], ['QS', 'TVS', 'Smartwings'], ['RO', 'ROT', 'Tarom'], ['FB', 'LZB', 'Bulgaria Air'],
+    ['BT', 'BTI', 'airBaltic'], ['A3', 'AEE', 'Aegean'], ['OA', 'OAL', 'Olympic'], ['JU', 'ASL', 'Air Serbia'], ['OU', 'CTN', 'Croatia Airlines'],
+    ['TK', 'THY', 'Turkish Airlines'], ['PC', 'PGT', 'Pegasus'], ['XQ', 'SXS', 'SunExpress'],
+    ['AT', 'RAM', 'Royal Air Maroc'], ['AH', 'DAH', 'Air Algérie'], ['TU', 'TAR', 'Tunisair'], ['BJ', 'LBT', 'Nouvelair'], ['MS', 'MSR', 'EgyptAir'],
+    ['MK', 'MAU', 'Air Mauritius'], ['ET', 'ETH', 'Ethiopian'], ['KQ', 'KQA', 'Kenya Airways'], ['SA', 'SAA', 'South African'],
+    ['EK', 'UAE', 'Emirates'], ['QR', 'QTR', 'Qatar Airways'], ['EY', 'ETD', 'Etihad'], ['SV', 'SVA', 'Saudia'], ['LY', 'ELY', 'El Al'],
+    ['DL', 'DAL', 'Delta'], ['AA', 'AAL', 'American'], ['UA', 'UAL', 'United'], ['B6', 'JBU', 'JetBlue'], ['WN', 'SWA', 'Southwest'],
+    ['AS', 'ASA', 'Alaska'], ['AC', 'ACA', 'Air Canada'], ['TS', 'TSC', 'Air Transat'], ['WS', 'WJA', 'WestJet'],
+    ['AM', 'AMX', 'Aeroméxico'], ['LA', 'LAN', 'LATAM'], ['AV', 'AVA', 'Avianca'], ['CM', 'CMP', 'Copa'],
+    ['JL', 'JAL', 'Japan Airlines'], ['NH', 'ANA', 'ANA'], ['CX', 'CPA', 'Cathay Pacific'], ['SQ', 'SIA', 'Singapore Airlines'],
+    ['QF', 'QFA', 'Qantas'], ['CA', 'CCA', 'Air China'], ['MU', 'CES', 'China Eastern'], ['CZ', 'CSN', 'China Southern'],
+    ['KE', 'KAL', 'Korean Air'], ['OZ', 'AAR', 'Asiana'], ['TG', 'THA', 'Thai'], ['AI', 'AIC', 'Air India'], ['VN', 'HVN', 'Vietnam Airlines'],
+    ['FX', 'FDX', 'FedEx'], ['5X', 'UPS', 'UPS'], ['QY', 'BCS', 'DHL']
+  ],
+
   // Simulation uniquement : compagnies imaginaires (aucun vol réel)
   compagniesSim: [
     ['NVL', 'Novaligne'], ['AZR', 'Azur Express'], ['CDX', 'Cirrus Lignes'], ['HLX', 'Héliox Air'],

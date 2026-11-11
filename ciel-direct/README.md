@@ -4,6 +4,9 @@ Suivi du trafic aérien en direct : carte des avions colorés selon l'altitude, 
 cap, vario, type, immatriculation, transpondeur, photo, route), trajectoire et profil d'altitude, recherche,
 liste triable, filtres, fonds de carte sombre/clair/satellite, suivi d'un vol, partage.
 
+Recherche par numéro de vol (ex. `TO3018`, converti en indicatif radio `TVF3018`), indicatif, immatriculation
+ou code hex ; si l'avion n'est pas sur la carte, il est cherché dans le monde entier (ADSB.lol).
+
 Données : ADSB.lol, puis OpenSky Network en secours ; sans réseau, un trafic **fictif** simulé est affiché.
 
 ## Installer
