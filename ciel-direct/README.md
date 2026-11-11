@@ -17,6 +17,8 @@ avions sont affichés, cherchés dans le monde entier. Le bouton en bas de l'éc
 **Aéroports du monde entier** (6 045, source OurAirports, domaine public) : grands aéroports en vue monde, moyens en
 vue continent, tous en vue région ; recherche par code, nom ou ville ; fiche en touchant l'aéroport.
 
+**Avions, drones ou les deux** : sélecteur sous la barre de recherche.
+
 **Détection des drones** (bouton drone) : le téléphone capte l'identification électronique diffusée par les drones en
 Bluetooth (Remote ID ASTM F3411 / européen, Bluetooth 4 et 5) et en Wi-Fi (balises ASTM et signalement électronique
 français, Android 11+) : identifiant, type, position, hauteur, vitesse, cap et position du pilote ou du point de

@@ -204,3 +204,11 @@ body.nolabels .ac .lbl { display: none; }
 .dlist li { padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); margin-bottom: 6px; cursor: pointer; display: flex; flex-direction: column; gap: 2px; }
 .dlist li small { color: var(--muted); }
 .dlist li.muted { cursor: default; border-style: dashed; }
+
+/* choix avions / drones / les deux */
+.modes { position: fixed; z-index: 999; top: calc(max(10px, env(safe-area-inset-top)) + 64px); left: 50%; transform: translateX(-50%);
+  display: flex; padding: 3px; gap: 2px; background: var(--panel); border: 1px solid var(--line); border-radius: 999px; box-shadow: 0 6px 18px rgba(0,0,0,.3); }
+.modes button { border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 12.5px; font-weight: 600; padding: 5px 12px; border-radius: 999px; cursor: pointer; white-space: nowrap; }
+.modes button.on { background: var(--accent); color: #04211d; }
+.modes button[data-mode="drones"].on { background: #f43f5e; color: #fff; }
+body.has-sheet .modes { display: none; }

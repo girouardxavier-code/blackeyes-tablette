@@ -14,7 +14,7 @@
   };
   const S = Object.assign({
     minAlt: 0, maxAlt: 45000, hideGround: false, labels: true, airports: true,
-    units: 'avia', source: 'auto', base: 'dark', view: [46.6, 2.5, 6], cie: '', cieNom: ''
+    units: 'avia', source: 'auto', base: 'dark', view: [46.6, 2.5, 6], cie: '', cieNom: '', mode: 'tous'
   }, store.get('settings', {}));
   const save = () => store.set('settings', S);
 
@@ -33,6 +33,7 @@
   const acLayer = L.layerGroup().addTo(map);
   const trailLayer = L.layerGroup().addTo(map);
   map.createPane('apts').style.zIndex = 420;
+  const droneLayer = L.layerGroup();   // drones Remote ID (affichés selon le mode)
   const APT = window.CD_AEROPORTS || D.aeroports.map((a) => a.concat([1, '', '']));
 
   /* ---------- Outils ---------- */
@@ -255,6 +256,7 @@
   function visibleByFilter(d) {
     if (S.hideGround && d.ground) return false;
     if (S.cie && !cieOf(d.callsign, S.cie)) return false;
+    if (S.mode === 'drones' && !isUAV(d)) return false;
     const a = d.ground ? 0 : (d.alt ?? 0);
     return a >= S.minAlt && (S.maxAlt >= 45000 || a <= S.maxAlt);
   }
@@ -321,6 +323,7 @@
       else if (!want && acLayer.hasLayer(p.marker)) acLayer.removeLayer(p.marker);
     }
     $('sCount').textContent = nf.format(n);
+    $('sCountL').textContent = S.mode === 'drones' ? (n > 1 ? 'drones ADS-B' : 'drone ADS-B') : (n > 1 ? 'avions' : 'avion');
     planeCanvas.redraw();
   }
   function project(d, now) {
@@ -923,7 +926,12 @@
       const s32 = (o) => new DataView(b.buffer, b.byteOffset).getInt32(o, false), s16 = (o) => new DataView(b.buffer, b.byteOffset).getInt16(o, false);
       for (let i = 0; i + 2 <= b.length;) {
         const t = b[i], l = b[i + 1], o = i + 2; if (o + l > b.length) break;
-        if (t === 2 && l) { d.id = str(b, o, l); d.idType = 'Identifiant FR'; }
+        if (t === 2 && l) {
+          // identifiant FR (30 caractères) : constructeur (3) + modèle (3) + numéro de série (24, complété par des 0)
+          d.id = str(b, o, l); d.idType = 'Identifiant FR';
+          if (d.id.length === 30) { d.maker = d.id.slice(0, 3); d.model = d.id.slice(3, 6); d.serial = d.id.slice(6).replace(/^0+(?=.)/, ''); }
+          d.alpha = true;
+        }
         else if (t === 3 && l && !d.id) { d.id = str(b, o, l); d.idType = 'N° de série'; }
         else if (t === 4 && l === 4) d.lat = s32(o) * 1e-5;
         else if (t === 5 && l === 4) d.lon = s32(o) * 1e-5;
@@ -942,7 +950,10 @@
     const ago = (t) => { const s = Math.round((Date.now() - t) / 1000); return s < 60 ? `il y a ${s} s` : `il y a ${Math.round(s / 60)} min`; };
     function info(d) {
       const rows = [
-        ['Identifiant', d.id ? `${d.id}${d.idType ? ' (' + d.idType + ')' : ''}` : 'non reçu'], ['Type', d.ua], ['État', d.status],
+        ['Identifiant', d.id ? `${d.id}${d.idType ? ' (' + d.idType + ')' : ''}` : 'non reçu'],
+        ['Constructeur / modèle', d.maker ? `${d.maker} / ${d.model}` : ''], ['N° de série', d.serial],
+        ['Enregistrement', d.alpha ? 'Signalement électronique français : drone de plus de 800 g, enregistré sur AlphaTango' : ''],
+        ['Type', d.ua], ['État', d.status],
         ['Hauteur', d.height != null ? `${Math.round(d.height)} m` : ''], ['Altitude', d.alt != null ? `${Math.round(d.alt)} m` : ''],
         ['Vitesse', d.speed != null ? `${Math.round(d.speed * 3.6)} km/h` : ''], ['Cap', d.track != null ? `${Math.round(d.track)}°` : ''],
         ['Opérateur', d.operator], ['Description', d.desc],
@@ -961,7 +972,7 @@
       if (d.lat != null && (d.lat || d.lon)) {
         if (!e.marker) {
           e.marker = L.marker([d.lat, d.lon], { zIndexOffset: 2000, keyboard: false, icon: L.divIcon({ className: 'drone', iconSize: [30, 30], iconAnchor: [15, 15], html: ICON + '<span class="lbl"></span>' }) })
-            .bindPopup('', { className: 'cd-pop' }).addTo(map);
+            .bindPopup('', { className: 'cd-pop' }).addTo(droneLayer);
           e.marker.on('popupopen', () => e.marker.setPopupContent(info(e.d)));
         }
         e.marker.setLatLng([d.lat, d.lon]);
@@ -969,8 +980,8 @@
         if (e.marker.isPopupOpen()) e.marker.setPopupContent(info(d));
         if (d.op && (d.op[0] || d.op[1])) {
           if (!e.op) {
-            e.op = L.circleMarker(d.op, { radius: 6, color: '#f97316', weight: 2, fillColor: '#fdba74', fillOpacity: .9 }).bindTooltip(d.opLabel || 'Pilote').addTo(map);
-            e.line = L.polyline([d.op, [d.lat, d.lon]], { color: '#f97316', weight: 1.5, dashArray: '4 4', interactive: false }).addTo(map);
+            e.op = L.circleMarker(d.op, { radius: 6, color: '#f97316', weight: 2, fillColor: '#fdba74', fillOpacity: .9 }).bindTooltip(d.opLabel || 'Pilote').addTo(droneLayer);
+            e.line = L.polyline([d.op, [d.lat, d.lon]], { color: '#f97316', weight: 1.5, dashArray: '4 4', interactive: false }).addTo(droneLayer);
           }
           e.op.setLatLng(d.op); e.line.setLatLngs([d.op, [d.lat, d.lon]]);
         }
@@ -986,7 +997,7 @@
       const now = Date.now();
       for (const [k, e] of list) {
         const age = now - e.d.seen;
-        if (age > 180e3) { [e.marker, e.op, e.line].forEach((l) => l && map.removeLayer(l)); list.delete(k); }
+        if (age > 180e3) { [e.marker, e.op, e.line].forEach((l) => l && droneLayer.removeLayer(l)); list.delete(k); }
         else if (age > 20e3 && e.marker && e.marker.getElement()) e.marker.getElement().classList.add('old');
       }
       status();
@@ -1036,9 +1047,23 @@
     };
     window.__cdDroneState = (msg) => { if (msg) toast(msg); if (/refus|désactiv|indisponible/i.test(msg || '')) { active = false; render(); status(); } };
     $('dToggle').addEventListener('click', toggle);
+    const start = () => { if (!active && NATIVE && NATIVE.droneStart) toggle(); };
     $('sDrone').addEventListener('click', () => togglePanel('drones'));
-    return { render, status, parse: odid, fr };
+    return { render, status, start, get active() { return active; } };
   })();
+
+  /* ---------- Avions, drones ou les deux ---------- */
+  function setMode(m) {
+    S.mode = m; save();
+    document.querySelectorAll('[data-mode]').forEach((b) => b.classList.toggle('on', b.dataset.mode === m));
+    document.body.classList.toggle('mode-drones', m === 'drones');
+    if (m === 'avions') map.removeLayer(droneLayer); else droneLayer.addTo(map);
+    if (selected && !visibleByFilter(planes.get(selected).d)) deselect();
+    applyFilters();
+    if (m === 'drones') { Drones.start(); if ($('drones').hidden) togglePanel('drones'); }
+  }
+  document.querySelectorAll('[data-mode]').forEach((b) => b.addEventListener('click', () => setMode(b.dataset.mode)));
+  setMode(['avions', 'drones', 'tous'].includes(S.mode) ? S.mode : 'tous');
 
   syncFilters();
   refresh();

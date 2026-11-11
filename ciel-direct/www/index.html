@@ -35,6 +35,10 @@
   </nav>
 </header>
 
+<div class="modes" role="group" aria-label="Afficher">
+  <button data-mode="avions">✈ Avions</button><button data-mode="drones">🛸 Drones</button><button data-mode="tous">Les deux</button>
+</div>
+
 <!-- Fiche du vol sélectionné -->
 <aside id="card" class="card" hidden>
   <button class="close" id="cardClose" aria-label="Fermer">×</button>
@@ -130,7 +134,7 @@
   <span id="sDot" class="dot"></span>
   <span id="sSrc">Connexion…</span>
   <span class="sep">·</span>
-  <span><b id="sCount">0</b> avions</span>
+  <span><b id="sCount">0</b> <span id="sCountL">avions</span></span>
   <button id="sDrone" class="chip chip-drone" hidden title="Drones détectés">🛸 <span id="sDroneN"></span></button>
   <button id="sCie" class="chip" hidden title="Retirer le filtre compagnie">✈ <span id="sCieN"></span> ✕</button>
   <span class="sep">·</span>
