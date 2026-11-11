@@ -32,7 +32,8 @@
   map.createPane('planes').style.zIndex = 450;
   const acLayer = L.layerGroup().addTo(map);
   const trailLayer = L.layerGroup().addTo(map);
-  const aptLayer = L.layerGroup().addTo(map);
+  map.createPane('apts').style.zIndex = 420;
+  const APT = window.CD_AEROPORTS || D.aeroports.map((a) => a.concat([1, '', '']));
 
   /* ---------- Outils ---------- */
   const toRad = (d) => d * Math.PI / 180, toDeg = (r) => r * 180 / Math.PI;
@@ -144,7 +145,7 @@
         operator: a.ownOp || '', country: countryOf(hex), lat: a.lat, lon: a.lon,
         alt: ground ? 0 : (typeof a.alt_baro === 'number' ? a.alt_baro : a.alt_geom ?? null), ground,
         gs: a.gs ?? null, track: a.track ?? a.true_heading ?? a.mag_heading ?? null, vs: a.baro_rate ?? a.geom_rate ?? null,
-        squawk: a.squawk || '', fix: now - (a.seen_pos ?? a.seen ?? 0) * 1000, src: 'adsblol'
+        squawk: a.squawk || '', fix: now - (a.seen_pos ?? a.seen ?? 0) * 1000, src: 'adsblol', cat: a.category || ''
       };
     });
   }
@@ -174,15 +175,15 @@
         const { b } = viewQuery();
         const all = !!S.cie || b.getEast() - b.getWest() >= 300;
         this.label = all ? 'OpenSky Network · monde entier' : 'OpenSky Network · direct';
-        const j = await getJSON(all ? 'https://opensky-network.org/api/states/all'
-          : `https://opensky-network.org/api/states/all?lamin=${b.getSouth().toFixed(3)}&lomin=${b.getWest().toFixed(3)}&lamax=${b.getNorth().toFixed(3)}&lomax=${b.getEast().toFixed(3)}`);
+        const j = await getJSON(all ? 'https://opensky-network.org/api/states/all?extended=1'
+          : `https://opensky-network.org/api/states/all?extended=1&lamin=${b.getSouth().toFixed(3)}&lomin=${b.getWest().toFixed(3)}&lamax=${b.getNorth().toFixed(3)}&lomax=${b.getEast().toFixed(3)}`);
         const now = Date.now(), srvT = j.time || now / 1000;
         return (j.states || []).filter((s) => s[5] != null && s[6] != null).map((s) => ({
           id: s[0], hex: s[0], callsign: (s[1] || '').trim(), reg: '', type: '', typeName: '', operator: '',
           country: s[2] || countryOf(s[0]), lat: s[6], lon: s[5],
           alt: s[7] != null ? s[7] / FT : s[13] != null ? s[13] / FT : null, ground: !!s[8],
           gs: s[9] != null ? s[9] * 3600 / NM : null, track: s[10], vs: s[11] != null ? s[11] / FT * 60 : null,
-          squawk: s[14] || '', fix: now - Math.max(0, srvT - (s[3] || srvT)) * 1000, src: 'opensky'
+          squawk: s[14] || '', fix: now - Math.max(0, srvT - (s[3] || srvT)) * 1000, src: 'opensky', cat: s[17] === 14 ? 'B6' : ''
         }));
       }
     },
@@ -248,6 +249,9 @@
   let selected = null, follow = false, showTrail = true, curSource = null, lastOk = 0;
 
   const cieOf = (cs, codes) => { cs = String(cs || '').toUpperCase(); return codes.split(' ').some((o) => o && cs.startsWith(o) && /\d/.test(cs[o.length] || '')); };
+  /* Drone équipé d'ADS-B : catégorie d'émetteur B6 (UAV) ou type de drone connu. */
+  const UAV_TYPES = new Set(['Q4', 'GLHK', 'RQ4', 'MQ4C', 'TRTN', 'Q9', 'MQ9', 'MQ1', 'PRED', 'HERN', 'HRON', 'HRMS', 'H450', 'H900', 'WK45', 'ANKA', 'TB2', 'BYKT']);
+  const isUAV = (d) => d.cat === 'B6' || UAV_TYPES.has(d.type) || /\b(UAV|UAS|DRONE|UNMANNED)\b/i.test(d.typeName || '');
   function visibleByFilter(d) {
     if (S.hideGround && d.ground) return false;
     if (S.cie && !cieOf(d.callsign, S.cie)) return false;
@@ -266,6 +270,7 @@
     el.querySelector('.lbl').textContent = d.callsign || d.reg || d.hex.toUpperCase();
     el.classList.toggle('sel', p.d.id === selected);
     el.classList.toggle('emerg', !!EMERG[d.squawk]);
+    el.classList.toggle('uav', isUAV(d));
     el.title = `${d.callsign || d.hex.toUpperCase()} · ${fmt.alt(d)}`;
   }
   /* Beaucoup d'avions (vue continent ou monde) : dessin rapide sur un canevas, sans étiquettes. */
@@ -357,6 +362,7 @@
       if (id === selected) { toast('Signal perdu pour ' + (p.d.callsign || id.toUpperCase())); deselect(); }
     }
     syncDisplay();
+    Drones.status();
     if (pendingFit) fitCie();
     if (selected) updateCard();
     if (!$('list').hidden) renderList();
@@ -450,7 +456,7 @@
     const d = p.d, em = EMERG[d.squawk];
     const fno = flightNo(d.callsign);
     $('cCall').textContent = fno ? fno.no : d.callsign || d.reg || d.hex.toUpperCase();
-    $('cSub').textContent = [fno && `Indicatif ${d.callsign}`, d.operator || (fno && fno.nom), d.typeName || d.type].filter(Boolean).join(' · ') || 'Informations limitées';
+    $('cSub').textContent = [isUAV(d) && '🛸 Drone', fno && `Indicatif ${d.callsign}`, d.operator || (fno && fno.nom), d.typeName || d.type].filter(Boolean).join(' · ') || 'Informations limitées';
     const badge = $('cBadge');
     badge.className = 'badge' + (em ? ' emerg' : d.ground ? ' ground' : '');
     badge.textContent = em ? `${d.squawk} · ${em}` : d.ground ? 'Au sol' : d.vs > 300 ? 'En montée' : d.vs < -300 ? 'En descente' : 'En croisière';
@@ -540,7 +546,7 @@
           r = { from: ap(a), to: ap(b) };
         } else if (x && x._airport_codes_iata && x.plausible !== false) {
           const c = x._airport_codes_iata.split('-');
-          const find = (code) => { const a = D.aeroports.find((z) => z[0] === code); return { code, name: a ? a[2] : '', ll: a ? [a[3], a[4]] : null }; };
+          const find = (code) => { const a = APT.find((z) => z[0] === code); return { code, name: a ? a[2] : '', ll: a ? [a[3], a[4]] : null }; };
           if (c.length >= 2) r = { from: find(c[0]), to: find(c[c.length - 1]) };
         }
       } catch { r = null; }
@@ -642,7 +648,7 @@
     qres.innerHTML = all.map((h, i) => h.kind === 'cie'
       ? `<li data-i="${i}" class="${i ? '' : 'sel'}"><span>🏢 ${esc(h.nom)}${h.iata ? ` <em class="code">${esc(h.iata)} · ${esc(h.codes.replace(/ /g, ', '))}</em>` : ''}</span><small>Compagnie — voir tous ses avions dans le monde (${nf.format(cieN(h.codes))} sur la carte)</small></li>`
       : h.kind === 'apt'
-      ? `<li data-i="${i}" class="${i ? '' : 'sel'}"><span>◉ ${esc(h.a[0])} — ${esc(h.a[2])}</span><small>Aéroport</small></li>`
+      ? `<li data-i="${i}" class="${i ? '' : 'sel'}"><span>◉ ${esc(h.a[0] || h.a[1])} — ${esc(h.a[2])}</span><small>Aéroport · ${esc([h.a[6], h.a[7]].filter(Boolean).join(', '))}</small></li>`
       : `<li data-i="${i}" class="${i ? '' : 'sel'}"><span>✈ ${esc(acTitle(h.d))}${h.kind === 'remote' ? '<em>hors de la carte</em>' : ''}</span><small>${esc(acLine(h.d))}</small></li>`).join('')
       + (rState === 'busy' ? '<li class="muted">Recherche dans le monde entier…</li>' : '')
       || `<li class="muted">${rState === 'none' ? 'Aucun avion en vol avec ce numéro ou cet indicatif' : 'Aucun résultat'}</li>`;
@@ -659,9 +665,17 @@
       if (matchesKey(d.callsign, keys) || [d.callsign, d.reg, d.hex.toUpperCase(), d.type].some((v) => v && norm(v).includes(s))) hits.push({ kind: 'ac', d });
       if (hits.length >= 14) break;
     }
-    for (const a of D.aeroports) {
-      if (hits.length >= 18) break;
-      if (a[0] === s || a[1] === s || a[2].toUpperCase().includes(raw)) hits.push({ kind: 'apt', a });
+    if (!keys.length && s.length >= 3) {
+      const u = sansAccent(raw), exact = [], other = [];
+      for (const a of APT) {
+        if (a[0] === s || a[1] === s) exact.push({ kind: 'apt', a });
+        else if (other.length < 8 && (sansAccent(a[2]).includes(u) || sansAccent(a[6]).includes(u))) other.push({ kind: 'apt', a });
+      }
+      // code d'aéroport exact : en premier, et pas de proposition « Indicatifs XXX »
+      if (exact.length) hits = hits.filter((h) => !(h.kind === 'cie' && !h.iata));
+      hits.unshift(...exact); hits.push(...other.slice(0, Math.max(0, 18 - hits.length)));
+    } else if (s.length === 2) {
+      // 2 lettres : seulement les codes exacts (évite des centaines de résultats)
     }
     // pas trouvé dans la zone affichée : recherche mondiale (numéro de vol, indicatif ou immatriculation)
     const isReg = /^[A-Z0-9]{1,2}-[A-Z0-9]{2,5}$/.test(raw) || /^N\d[0-9A-Z]{1,4}$/.test(s);
@@ -685,7 +699,7 @@
   function choose(i) {
     const h = hits[i]; if (!h) return;
     qres.hidden = true; q.value = ''; q.blur();
-    if (h.kind === 'apt') return map.setView([h.a[3], h.a[4]], 10);
+    if (h.kind === 'apt') { map.setView([h.a[3], h.a[4]], 10); return aptPopup(h.a); }
     if (h.kind === 'cie') { if (selected) deselect(); return setCie(h.codes, h.nom, true); }
     if (planes.has(h.d.id)) return select(h.d.id, true);
     // avion hors de la zone : on y va, puis il est sélectionné au prochain chargement
@@ -704,18 +718,57 @@
   qres.addEventListener('mousedown', (e) => { const li = e.target.closest('li[data-i]'); if (li) { e.preventDefault(); choose(+li.dataset.i); } });
   q.addEventListener('blur', () => setTimeout(() => { qres.hidden = true; }, 150));
 
-  /* ---------- Aéroports ---------- */
-  for (const [iata, icao, name, lat, lon] of D.aeroports) {
-    L.marker([lat, lon], {
-      interactive: true, keyboard: false, zIndexOffset: -1000,
-      icon: L.divIcon({ className: 'apt-wrap', iconSize: [8, 8], iconAnchor: [4, 4], html: `<div class="apt"></div><div class="apt-lbl">${iata}</div>` })
-    }).bindTooltip(`${name} (${iata} / ${icao})`, { direction: 'top' })
-      .on('click', () => map.setView([lat, lon], Math.max(map.getZoom(), 10)))
-      .addTo(aptLayer);
+  /* ---------- Aéroports (monde entier, dessinés sur un canevas) ----------
+     Vue monde : grands aéroports ; continent : + moyens ; région : tous, avec leur code. */
+  const AptCanvas = L.Layer.extend({
+    onAdd(m) { this._c = L.DomUtil.create('canvas', 'plane-canvas'); m.getPane('apts').appendChild(this._c); m.on('moveend zoomend resize viewreset', this.redraw, this); m.on('zoomstart', this._hide, this); this.redraw(); },
+    onRemove(m) { this._c.remove(); m.off('moveend zoomend resize viewreset', this.redraw, this); m.off('zoomstart', this._hide, this); },
+    _hide() { this._c.style.visibility = 'hidden'; },
+    redraw() {
+      const m = this._map; if (!m) return;
+      const c = this._c, sz = m.getSize(), r = window.devicePixelRatio || 1;
+      L.DomUtil.setPosition(c, m.containerPointToLayerPoint([0, 0]));
+      if (c.width !== Math.round(sz.x * r) || c.height !== Math.round(sz.y * r)) { c.width = Math.round(sz.x * r); c.height = Math.round(sz.y * r); c.style.width = sz.x + 'px'; c.style.height = sz.y + 'px'; }
+      const g = c.getContext('2d'); g.setTransform(r, 0, 0, r, 0, 0); g.clearRect(0, 0, sz.x, sz.y); c.style.visibility = 'visible';
+      this.pts = [];
+      if (!S.airports) return;
+      const z = m.getZoom(), maxTier = z <= 4 ? 1 : z <= 6 ? 2 : 3, lblTier = z <= 4 ? 0 : z <= 6 ? 1 : z <= 7 ? 2 : 3;
+      const b = m.getBounds().pad(.05), light = S.base === 'light';
+      g.font = '700 10px system-ui, sans-serif'; g.lineWidth = 3; g.lineJoin = 'round';
+      for (let i = APT.length - 1; i >= 0; i--) {   // les grands aéroports en dernier (au-dessus)
+        const a = APT[i]; if (a[5] > maxTier || !b.contains([a[3], a[4]])) continue;
+        const pt = m.latLngToContainerPoint([a[3], a[4]]), rad = a[5] === 1 ? 4 : a[5] === 2 ? 3 : 2.5;
+        g.beginPath(); g.arc(pt.x, pt.y, rad, 0, Math.PI * 2);
+        g.fillStyle = a[5] === 1 ? '#fff' : '#cbd5e1'; g.fill(); g.strokeStyle = '#475569'; g.lineWidth = 1.5; g.stroke();
+        if (a[5] <= lblTier) {
+          const t = a[0] || a[1]; g.lineWidth = 3;
+          g.strokeStyle = light ? 'rgba(255,255,255,.9)' : 'rgba(0,0,0,.85)'; g.strokeText(t, pt.x + 6, pt.y + 12);
+          g.fillStyle = light ? '#1e293b' : '#cbd5e1'; g.fillText(t, pt.x + 6, pt.y + 12);
+        }
+        this.pts.push([pt.x, pt.y, a]);
+      }
+    },
+    hit(cp) {
+      let best = null, bd = 12 * 12;
+      for (const [x, y, a] of this.pts || []) { const dd = (x - cp.x) ** 2 + (y - cp.y) ** 2; if (dd < bd) { bd = dd; best = a; } }
+      return best;
+    }
+  });
+  const aptCanvas = new AptCanvas().addTo(map);
+  function aptPopup(a) {
+    const cat = ['', 'Grand aéroport', 'Aéroport', 'Petit aéroport (vols réguliers)'][a[5]] || 'Aéroport';
+    L.popup({ className: 'cd-pop', autoPan: true }).setLatLng([a[3], a[4]])
+      .setContent(`<b>${esc(a[2])}</b><br><span class="muted">${esc([a[0], a[1]].filter(Boolean).join(' / '))} · ${esc(cat)}</span><br>${esc([a[6], a[7]].filter(Boolean).join(', '))}`
+        + `<br><button type="button" class="pop-btn" data-zoom="${a[3]},${a[4]}">Voir les avions autour</button>`)
+      .openOn(map);
   }
+  map.on('popupopen', (e) => {
+    const bt = e.popup.getElement().querySelector('[data-zoom]');
+    if (bt) bt.addEventListener('click', () => { const [la, lo] = bt.dataset.zoom.split(',').map(Number); map.closePopup(); map.setView([la, lo], 9); });
+  });
 
   /* ---------- Panneaux et boutons ---------- */
-  const panels = { list: $('bList'), filter: $('bFilter'), layers: $('bLayers') };
+  const panels = { list: $('bList'), filter: $('bFilter'), layers: $('bLayers'), drones: $('bDrone') };
   function hidePanels(except) {
     for (const [k, b] of Object.entries(panels)) if (k !== except) { $(k).hidden = true; b.classList.remove('on'); }
   }
@@ -725,6 +778,7 @@
     el.hidden = !open; panels[k].classList.toggle('on', open);
     if (open && window.innerWidth <= 720 && selected) deselect();
     if (open && k === 'list') renderList();
+    if (open && k === 'drones') Drones.render();
   }
   for (const k of Object.keys(panels)) panels[k].addEventListener('click', () => togglePanel(k));
   document.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', () => hidePanels()));
@@ -739,6 +793,8 @@
   map.on('click', (e) => {
     const id = lite && planeCanvas.hit(e.containerPoint);
     if (id) { select(id); return; }
+    const ap = aptCanvas.hit(e.containerPoint);
+    if (ap) { aptPopup(ap); return; }
     if (selected) deselect(); hidePanels();
   });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && document.activeElement !== q) { deselect(); hidePanels(); } });
@@ -777,6 +833,7 @@
     $('sCie').hidden = !S.cie; $('sCieN').textContent = S.cieNom || S.cie;
     document.body.classList.toggle('nolabels', !S.labels);
     document.body.classList.toggle('noairports', !S.airports);
+    aptCanvas.redraw();
   }
   function applyFilters() {
     syncDisplay();
@@ -805,20 +862,183 @@
 
   // Ma position
   let me = null;
-  $('bLocate').addEventListener('click', () => {
+  const meLL = () => { const l = me.getLatLng(); return [l.lat, l.lng]; };
+  function locate(zoom) {
     if (!navigator.geolocation) return toast('Géolocalisation non disponible.');
     navigator.geolocation.getCurrentPosition((pos) => {
       const ll = [pos.coords.latitude, pos.coords.longitude];
       if (me) me.setLatLng(ll);
       else me = L.marker(ll, { icon: L.divIcon({ className: '', html: '<div class="me"></div>', iconSize: [16, 16], iconAnchor: [8, 8] }), keyboard: false }).addTo(map);
-      map.setView(ll, 9);
-    }, () => toast('Position refusée ou indisponible.'), { enableHighAccuracy: false, timeout: 10000 });
-  });
+      map.setView(ll, zoom || 9);
+    }, () => toast('Position refusée ou indisponible.'), { enableHighAccuracy: !!zoom, timeout: 10000 });
+  }
+  $('bLocate').addEventListener('click', () => locate());
 
   // Lien partagé : #vol=<id>
   let pendingHash = null;
   const m = location.hash.match(/vol=([^&]+)/);
   if (m) pendingHash = decodeURIComponent(m[1]);
+
+  /* ---------- Détection des drones ----------
+     1) Remote ID : identification électronique diffusée par les drones (norme ASTM F3411 / « Remote ID » européen,
+        et signalement électronique français) en Bluetooth et en Wi-Fi. Reçue directement par le téléphone,
+        portée de quelques centaines de mètres à ~1 km. Application Android uniquement.
+     2) ADS-B : drones (souvent militaires ou gros drones) qui émettent comme des avions, vus par le réseau. */
+  const Drones = (() => {
+    const list = new Map();   // clé → { d, marker, op, line }
+    let active = false, count0 = 0;
+    const UA = ['Non déclaré', 'Avion', 'Hélicoptère / multirotor', 'Gyravion', 'VTOL', 'Ornithoptère', 'Planeur', 'Cerf-volant',
+      'Ballon libre', 'Ballon captif', 'Dirigeable', 'Parachute', 'Fusée', 'Captif motorisé', 'Obstacle au sol', 'Autre'];
+    const IDT = ['', 'N° de série', 'Enregistrement', 'Identifiant UTM', 'Identifiant session'];
+    const hex2b = (h) => { const b = new Uint8Array(h.length / 2); for (let i = 0; i < b.length; i++) b[i] = parseInt(h.substr(i * 2, 2), 16); return b; };
+    const str = (b, a, n) => String.fromCharCode(...b.slice(a, a + n)).replace(/\0.*$/s, '').trim();
+    const i32 = (b, o) => new DataView(b.buffer, b.byteOffset).getInt32(o, true);
+    const u16 = (b, o) => new DataView(b.buffer, b.byteOffset).getUint16(o, true);
+    /* message ODID (25 octets) */
+    function odid(m, d) {
+      if (!m || m.length < 25) return;
+      const type = m[0] >> 4;
+      if (type === 0xF) { const sz = m[1], n = m[2]; for (let i = 0; i < n; i++) odid(m.slice(3 + i * sz, 3 + (i + 1) * sz), d); return; }
+      if (type === 0) {
+        const id = str(m, 2, 20); d.ua = UA[m[1] & 15] || ''; if (id) { d.id = id; d.idType = IDT[m[1] >> 4] || ''; }
+      } else if (type === 1) {
+        const ew = (m[1] >> 1) & 1, mult = m[1] & 1, lat = i32(m, 5) * 1e-7, lon = i32(m, 9) * 1e-7;
+        d.status = ['', 'Au sol', 'En vol', 'Urgence', 'Panne Remote ID'][m[1] >> 4] || '';
+        if (m[2] <= 179) d.track = m[2] + (ew ? 180 : 0);
+        if (m[3] !== 255) d.speed = mult ? m[3] * .75 + 63.75 : m[3] * .25;
+        if (m[4] !== 126) d.vs = (m[4] << 24 >> 24) * .5;
+        if (lat || lon) { d.lat = lat; d.lon = lon; }
+        const alt = u16(m, 15) * .5 - 1000, h = u16(m, 17) * .5 - 1000;
+        if (alt > -1000) d.alt = alt; if (h > -1000) d.height = h;
+      } else if (type === 3) {
+        const t = str(m, 2, 23); if (t) d.desc = t;
+      } else if (type === 4) {
+        const la = i32(m, 2) * 1e-7, lo = i32(m, 6) * 1e-7; if (la || lo) d.op = [la, lo];
+      } else if (type === 5) {
+        const t = str(m, 2, 20); if (t) d.operator = t;
+      }
+    }
+    /* signalement électronique français (TLV, Wi-Fi) */
+    function fr(b, d) {
+      const s32 = (o) => new DataView(b.buffer, b.byteOffset).getInt32(o, false), s16 = (o) => new DataView(b.buffer, b.byteOffset).getInt16(o, false);
+      for (let i = 0; i + 2 <= b.length;) {
+        const t = b[i], l = b[i + 1], o = i + 2; if (o + l > b.length) break;
+        if (t === 2 && l) { d.id = str(b, o, l); d.idType = 'Identifiant FR'; }
+        else if (t === 3 && l && !d.id) { d.id = str(b, o, l); d.idType = 'N° de série'; }
+        else if (t === 4 && l === 4) d.lat = s32(o) * 1e-5;
+        else if (t === 5 && l === 4) d.lon = s32(o) * 1e-5;
+        else if (t === 6 && l === 2) d.alt = s16(o);
+        else if (t === 7 && l === 2) d.height = s16(o);
+        else if (t === 8 && l === 4) d.op = [s32(o) * 1e-5, (d.op || [0, 0])[1]];
+        else if (t === 9 && l === 4) d.op = [(d.op || [0, 0])[0], s32(o) * 1e-5];
+        else if (t === 10 && l === 1) d.speed = b[o];
+        else if (t === 11 && l === 2) d.track = s16(o);
+        i = o + l;
+      }
+      if (d.op) d.opLabel = 'Point de décollage';
+    }
+    const ICON = '<svg viewBox="0 0 24 24"><circle cx="5" cy="5" r="3.2"/><circle cx="19" cy="5" r="3.2"/><circle cx="5" cy="19" r="3.2"/><circle cx="19" cy="19" r="3.2"/><path d="M7 7l3.5 3.5M17 7l-3.5 3.5M7 17l3.5-3.5M17 17l-3.5-3.5" stroke-width="2.2"/><rect x="9" y="9" width="6" height="6" rx="1.5"/></svg>';
+    const name = (d) => d.id || (d.mac ? 'Drone ' + d.mac.slice(-5) : 'Drone');
+    const ago = (t) => { const s = Math.round((Date.now() - t) / 1000); return s < 60 ? `il y a ${s} s` : `il y a ${Math.round(s / 60)} min`; };
+    function info(d) {
+      const rows = [
+        ['Identifiant', d.id ? `${d.id}${d.idType ? ' (' + d.idType + ')' : ''}` : 'non reçu'], ['Type', d.ua], ['État', d.status],
+        ['Hauteur', d.height != null ? `${Math.round(d.height)} m` : ''], ['Altitude', d.alt != null ? `${Math.round(d.alt)} m` : ''],
+        ['Vitesse', d.speed != null ? `${Math.round(d.speed * 3.6)} km/h` : ''], ['Cap', d.track != null ? `${Math.round(d.track)}°` : ''],
+        ['Opérateur', d.operator], ['Description', d.desc],
+        [d.opLabel || 'Position du pilote', d.op ? `${d.op[0].toFixed(5)}, ${d.op[1].toFixed(5)}` : ''],
+        ['Distance', me && d.lat != null ? `${nf.format(Math.round(distKm(meLL(), [d.lat, d.lon]) * 1000))} m` : ''],
+        ['Signal', `${d.via}${d.rssi != null ? ' · ' + d.rssi + ' dBm' : ''} · ${ago(d.seen)}`]
+      ].filter((r) => r[1]);
+      return `<b>🛸 ${esc(name(d))}</b><table class="pop-t">${rows.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join('')}</table>`;
+    }
+    function upsert(key, d) {
+      let e = list.get(key);
+      const isNew = !e;
+      if (!e) { e = { d: { seen: Date.now() } }; list.set(key, e); }
+      Object.assign(e.d, d, { seen: Date.now() });
+      d = e.d;
+      if (d.lat != null && (d.lat || d.lon)) {
+        if (!e.marker) {
+          e.marker = L.marker([d.lat, d.lon], { zIndexOffset: 2000, keyboard: false, icon: L.divIcon({ className: 'drone', iconSize: [30, 30], iconAnchor: [15, 15], html: ICON + '<span class="lbl"></span>' }) })
+            .bindPopup('', { className: 'cd-pop' }).addTo(map);
+          e.marker.on('popupopen', () => e.marker.setPopupContent(info(e.d)));
+        }
+        e.marker.setLatLng([d.lat, d.lon]);
+        const el = e.marker.getElement(); if (el) { el.querySelector('.lbl').textContent = name(d); el.classList.remove('old'); }
+        if (e.marker.isPopupOpen()) e.marker.setPopupContent(info(d));
+        if (d.op && (d.op[0] || d.op[1])) {
+          if (!e.op) {
+            e.op = L.circleMarker(d.op, { radius: 6, color: '#f97316', weight: 2, fillColor: '#fdba74', fillOpacity: .9 }).bindTooltip(d.opLabel || 'Pilote').addTo(map);
+            e.line = L.polyline([d.op, [d.lat, d.lon]], { color: '#f97316', weight: 1.5, dashArray: '4 4', interactive: false }).addTo(map);
+          }
+          e.op.setLatLng(d.op); e.line.setLatLngs([d.op, [d.lat, d.lon]]);
+        }
+      }
+      if (isNew) {
+        toast(`🛸 Drone détecté : ${name(d)}${d.via ? ' (' + d.via + ')' : ''}`);
+        try { navigator.vibrate && navigator.vibrate([120, 60, 120]); } catch { /* sans vibreur */ }
+      }
+      status();
+      if (!$('drones').hidden) render();
+    }
+    function purge() {
+      const now = Date.now();
+      for (const [k, e] of list) {
+        const age = now - e.d.seen;
+        if (age > 180e3) { [e.marker, e.op, e.line].forEach((l) => l && map.removeLayer(l)); list.delete(k); }
+        else if (age > 20e3 && e.marker && e.marker.getElement()) e.marker.getElement().classList.add('old');
+      }
+      status();
+      if (!$('drones').hidden) render();
+    }
+    setInterval(purge, 5000);
+    const adsb = () => [...planes.values()].filter((p) => isUAV(p.d)).map((p) => p.d);
+    function status() {
+      const n = list.size, a = adsb().length;
+      $('bDrone').classList.toggle('alert', n > 0 || a > 0);
+      $('sDrone').hidden = !active && !n;
+      $('sDroneN').textContent = active ? `${n} drone${n > 1 ? 's' : ''}` : `${n} détecté${n > 1 ? 's' : ''}`;
+      if (n !== count0) { count0 = n; }
+    }
+    function render() {
+      const can = !!(NATIVE && NATIVE.droneStart);
+      $('dToggle').textContent = active ? '⏹ Arrêter la détection' : '📡 Démarrer la détection';
+      $('dToggle').classList.toggle('on', active);
+      $('dState').textContent = !can ? 'La réception Remote ID (Bluetooth / Wi-Fi) fonctionne dans l\'application Android. Ici, seuls les drones ADS-B sont signalés.'
+        : active ? 'Écoute du Bluetooth et du Wi-Fi… Les drones à moins d\'environ 1 km apparaissent ici et sur la carte.' : 'Détection arrêtée.';
+      const rows = [...list.values()].map((e) => e.d).sort((a, z) => z.seen - a.seen);
+      const air = adsb();
+      $('dList').innerHTML = rows.map((d, i) => `<li data-k="${i}"><b>🛸 ${esc(name(d))}</b><small>${esc([d.ua, d.height != null && Math.round(d.height) + ' m', me && d.lat != null && nf.format(Math.round(distKm(meLL(), [d.lat, d.lon]) * 1000)) + ' m de vous', d.via, ago(d.seen)].filter(Boolean).join(' · '))}</small></li>`).join('')
+        + air.map((d) => `<li data-p="${esc(d.id)}"><b>✈ ${esc(d.callsign || d.reg || d.hex.toUpperCase())}</b><small>${esc(['Drone ADS-B', d.type, fmt.alt(d)].filter(Boolean).join(' · '))}</small></li>`).join('')
+        || '<li class="muted">Aucun drone détecté pour l\'instant.</li>';
+      $('dList').querySelectorAll('li[data-k]').forEach((li) => li.addEventListener('click', () => {
+        const d = rows[+li.dataset.k], e = [...list.values()].find((x) => x.d === d);
+        if (e && e.marker) { map.setView(e.marker.getLatLng(), Math.max(map.getZoom(), 15)); e.marker.openPopup(); } else toast('Position du drone pas encore reçue.');
+      }));
+      $('dList').querySelectorAll('li[data-p]').forEach((li) => li.addEventListener('click', () => select(li.dataset.p, true)));
+    }
+    function toggle() {
+      if (!(NATIVE && NATIVE.droneStart)) { toast('Réception Remote ID disponible dans l\'application Android.'); return; }
+      active = !active;
+      if (active) { NATIVE.droneStart(); locate(15); } else NATIVE.droneStop();
+      render(); status();
+    }
+    /* appelé par l'application Android */
+    window.__cdDrone = (j) => {
+      try {
+        const r = typeof j === 'string' ? JSON.parse(j) : j, d = { via: r.src === 'wifi' ? 'Wi-Fi' : 'Bluetooth', rssi: r.rssi, mac: r.mac };
+        const b = hex2b(r.hex || '');
+        if (r.kind === 'fr') fr(b, d); else odid(b, d);
+        const prev = [...list.entries()].find(([, e]) => (d.id && e.d.id === d.id) || e.d.mac === r.mac);
+        upsert(prev ? prev[0] : (d.id || r.mac), d);
+      } catch (e) { console.warn('Trame drone illisible', e); }
+    };
+    window.__cdDroneState = (msg) => { if (msg) toast(msg); if (/refus|désactiv|indisponible/i.test(msg || '')) { active = false; render(); status(); } };
+    $('dToggle').addEventListener('click', toggle);
+    $('sDrone').addEventListener('click', () => togglePanel('drones'));
+    return { render, status, parse: odid, fr };
+  })();
 
   syncFilters();
   refresh();

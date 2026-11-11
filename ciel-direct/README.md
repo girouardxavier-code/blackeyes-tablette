@@ -14,6 +14,14 @@ alors en mode rapide (canevas) pour des milliers d'avions.
 **Par compagnie** : tapez son nom ou son code (« Transavia », « TO », « TVF ») ou choisissez-la dans Filtres ; seuls ses
 avions sont affichés, cherchés dans le monde entier. Le bouton en bas de l'écran retire le filtre.
 
+**Aéroports du monde entier** (6 045, source OurAirports, domaine public) : grands aéroports en vue monde, moyens en
+vue continent, tous en vue région ; recherche par code, nom ou ville ; fiche en touchant l'aéroport.
+
+**Détection des drones** (bouton drone) : le téléphone capte l'identification électronique diffusée par les drones en
+Bluetooth (Remote ID ASTM F3411 / européen, Bluetooth 4 et 5) et en Wi-Fi (balises ASTM et signalement électronique
+français, Android 11+) : identifiant, type, position, hauteur, vitesse, cap et position du pilote ou du point de
+décollage, avec alerte et vibration. Les drones équipés d'ADS-B (catégorie UAV) sont aussi signalés.
+
 Données : ADSB.lol, puis OpenSky Network en secours ; sans réseau, un trafic **fictif** simulé est affiché.
 
 ## Installer
