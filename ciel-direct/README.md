@@ -7,6 +7,13 @@ liste triable, filtres, fonds de carte sombre/clair/satellite, suivi d'un vol, p
 Recherche par numéro de vol (ex. `TO3018`, converti en indicatif radio `TVF3018`), indicatif, immatriculation
 ou code hex ; si l'avion n'est pas sur la carte, il est cherché dans le monde entier (ADSB.lol).
 
+**Partout dans le monde** : en vue large (continent, monde), les avions du monde entier sont chargés par OpenSky Network
+(une requête par minute, quota gratuit limité), sinon par ADSB.lol en 30 zones autour du centre ; l'affichage passe
+alors en mode rapide (canevas) pour des milliers d'avions.
+
+**Par compagnie** : tapez son nom ou son code (« Transavia », « TO », « TVF ») ou choisissez-la dans Filtres ; seuls ses
+avions sont affichés, cherchés dans le monde entier. Le bouton en bas de l'écran retire le filtre.
+
 Données : ADSB.lol, puis OpenSky Network en secours ; sans réseau, un trafic **fictif** simulé est affiché.
 
 ## Installer

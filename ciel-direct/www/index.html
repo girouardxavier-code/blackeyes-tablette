@@ -86,6 +86,8 @@
   <input id="fMin" type="range" min="0" max="45000" step="1000" value="0">
   <label class="row">Altitude max. <output id="oMax"></output></label>
   <input id="fMax" type="range" min="0" max="45000" step="1000" value="45000">
+  <label class="row">Compagnie aérienne</label>
+  <select id="fCie"><option value="">Toutes les compagnies</option></select>
   <label class="chk"><input id="fGround" type="checkbox"> Masquer les avions au sol</label>
   <label class="chk"><input id="fLabels" type="checkbox" checked> Afficher les indicatifs</label>
   <label class="chk"><input id="fAirports" type="checkbox" checked> Afficher les aéroports</label>
@@ -116,6 +118,7 @@
   <span id="sSrc">Connexion…</span>
   <span class="sep">·</span>
   <span><b id="sCount">0</b> avions</span>
+  <button id="sCie" class="chip" hidden title="Retirer le filtre compagnie">✈ <span id="sCieN"></span> ✕</button>
   <span class="sep">·</span>
   <span id="sTime">—</span>
   <div class="legend" title="Couleur selon l'altitude">

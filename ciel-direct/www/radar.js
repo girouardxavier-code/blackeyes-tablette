@@ -14,12 +14,12 @@
   };
   const S = Object.assign({
     minAlt: 0, maxAlt: 45000, hideGround: false, labels: true, airports: true,
-    units: 'avia', source: 'auto', base: 'dark', view: [46.6, 2.5, 6]
+    units: 'avia', source: 'auto', base: 'dark', view: [46.6, 2.5, 6], cie: '', cieNom: ''
   }, store.get('settings', {}));
   const save = () => store.set('settings', S);
 
   /* ---------- Carte ---------- */
-  const map = L.map('map', { zoomControl: true, worldCopyJump: true, preferCanvas: false, minZoom: 3 })
+  const map = L.map('map', { zoomControl: true, worldCopyJump: true, preferCanvas: false, minZoom: 2 })
     .setView([S.view[0], S.view[1]], S.view[2]);
   map.zoomControl.setPosition('bottomright');
   const bases = {
@@ -29,6 +29,7 @@
   };
   let base = bases[S.base] || bases.dark;
   base.addTo(map);
+  map.createPane('planes').style.zIndex = 450;
   const acLayer = L.layerGroup().addTo(map);
   const trailLayer = L.layerGroup().addTo(map);
   const aptLayer = L.layerGroup().addTo(map);
@@ -89,8 +90,28 @@
   function viewQuery() {
     const b = map.getBounds(), c = map.getCenter();
     const rKm = Math.max(distKm([c.lat, c.lng], [b.getNorth(), b.getEast()]), distKm([c.lat, c.lng], [b.getSouth(), b.getWest()]));
-    return { b, c, rNm: Math.min(250, Math.ceil(rKm * 1000 / NM)) };
+    return { b, c, rNm: Math.ceil(rKm * 1000 / NM) };
   }
+  /* Vue large : la zone est couverte par des cercles de 250 NM (limite d'une requête ADSB.lol),
+     les plus proches du centre d'abord. */
+  const MAX_TILES = 30;
+  function tilesFor(b, c) {
+    const R = 250 * NM / 1000, step = R * 1.3 / 111;
+    let w = b.getWest(), e = b.getEast(); if (e - w >= 360) { w = -180; e = 180; }
+    const s = Math.max(-80, b.getSouth()), n = Math.min(80, b.getNorth()), pts = [];
+    for (let lat = s + step / 2, row = 0; lat < n + step / 2; lat += step, row++) {
+      const dl = step / Math.max(.25, Math.cos(toRad(Math.min(80, lat))));
+      for (let lon = w + (row % 2 ? dl : dl / 2); lon < e + dl / 2; lon += dl) pts.push([Math.min(80, lat), ((lon + 540) % 360) - 180]);
+    }
+    return pts.sort((a, z) => distKm([c.lat, c.lng], a) - distKm([c.lat, c.lng], z)).slice(0, MAX_TILES);
+  }
+  async function pool(items, n, fn) {
+    const out = []; let i = 0;
+    await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => { while (i < items.length) { const k = i++; out[k] = await fn(items[k]).catch(() => null); } }));
+    return out;
+  }
+  // vue monde : carte très dézoomée, ou filtre compagnie actif (ses avions sont cherchés partout)
+  const worldView = () => map.getZoom() <= 4 || !!S.cie;
   /* Dans l'application Android, les requêtes passent par le pont natif (pas de restriction CORS). */
   const NATIVE = window.CDNative || null;
   const pend = new Map(); let seq = 0;
@@ -129,18 +150,32 @@
   }
   const sources = {
     adsblol: {
-      label: 'ADSB.lol · direct', interval: 6000, live: true,
+      label: 'ADSB.lol · direct', live: true, tiles: 1,
+      get interval() { return this.tiles > 1 ? 20000 : 6000; },
       async fetch() {
-        const { c, rNm } = viewQuery();
-        const j = await getJSON(`https://api.adsb.lol/v2/point/${c.lat.toFixed(4)}/${c.lng.toFixed(4)}/${rNm}`);
-        return fromAdsb(j.ac);
+        const { b, c, rNm } = viewQuery();
+        if (rNm <= 250) {
+          this.tiles = 1; this.label = 'ADSB.lol · direct';
+          return fromAdsb((await getJSON(`https://api.adsb.lol/v2/point/${c.lat.toFixed(4)}/${c.lng.toFixed(4)}/${rNm}`)).ac);
+        }
+        const tiles = tilesFor(b, c); this.tiles = tiles.length;
+        const res = await pool(tiles, 5, (t) => getJSON(`https://api.adsb.lol/v2/point/${t[0].toFixed(3)}/${t[1].toFixed(3)}/250`));
+        if (res.every((r) => !r)) throw new Error('aucune réponse');
+        const seen = new Set();
+        this.label = `ADSB.lol · ${tiles.length} zones`;
+        return fromAdsb(res.flatMap((r) => (r && r.ac) || [])).filter((d) => !seen.has(d.id) && seen.add(d.id));
       }
     },
     opensky: {
-      label: 'OpenSky Network · direct', interval: 12000, live: true,
+      label: 'OpenSky Network · direct', live: true,
+      // la vue monde coûte 4 crédits OpenSky par requête (400 par jour sans compte) : une par minute
+      get interval() { return worldView() ? 60000 : 12000; },
       async fetch() {
         const { b } = viewQuery();
-        const j = await getJSON(`https://opensky-network.org/api/states/all?lamin=${b.getSouth().toFixed(3)}&lomin=${b.getWest().toFixed(3)}&lamax=${b.getNorth().toFixed(3)}&lomax=${b.getEast().toFixed(3)}`);
+        const all = !!S.cie || b.getEast() - b.getWest() >= 300;
+        this.label = all ? 'OpenSky Network · monde entier' : 'OpenSky Network · direct';
+        const j = await getJSON(all ? 'https://opensky-network.org/api/states/all'
+          : `https://opensky-network.org/api/states/all?lamin=${b.getSouth().toFixed(3)}&lomin=${b.getWest().toFixed(3)}&lamax=${b.getNorth().toFixed(3)}&lomax=${b.getEast().toFixed(3)}`);
         const now = Date.now(), srvT = j.time || now / 1000;
         return (j.states || []).filter((s) => s[5] != null && s[6] != null).map((s) => ({
           id: s[0], hex: s[0], callsign: (s[1] || '').trim(), reg: '', type: '', typeName: '', operator: '',
@@ -212,8 +247,10 @@
   const planes = new Map();   // id → { d, marker, trail, rot }
   let selected = null, follow = false, showTrail = true, curSource = null, lastOk = 0;
 
+  const cieOf = (cs, codes) => { cs = String(cs || '').toUpperCase(); return codes.split(' ').some((o) => o && cs.startsWith(o) && /\d/.test(cs[o.length] || '')); };
   function visibleByFilter(d) {
     if (S.hideGround && d.ground) return false;
+    if (S.cie && !cieOf(d.callsign, S.cie)) return false;
     const a = d.ground ? 0 : (d.alt ?? 0);
     return a >= S.minAlt && (S.maxAlt >= 45000 || a <= S.maxAlt);
   }
@@ -230,6 +267,56 @@
     el.classList.toggle('sel', p.d.id === selected);
     el.classList.toggle('emerg', !!EMERG[d.squawk]);
     el.title = `${d.callsign || d.hex.toUpperCase()} · ${fmt.alt(d)}`;
+  }
+  /* Beaucoup d'avions (vue continent ou monde) : dessin rapide sur un canevas, sans étiquettes. */
+  const LITE_MAX = 700, PATH2D = new Path2D(PLANE_PATH);
+  let lite = false;
+  const PlaneCanvas = L.Layer.extend({
+    onAdd(m) {
+      this._c = L.DomUtil.create('canvas', 'plane-canvas'); m.getPane('planes').appendChild(this._c);
+      m.on('moveend zoomend resize viewreset', this.redraw, this); m.on('zoomstart', this._hide, this); this.redraw();
+    },
+    onRemove(m) { this._c.remove(); m.off('moveend zoomend resize viewreset', this.redraw, this); m.off('zoomstart', this._hide, this); },
+    _hide() { this._c.style.visibility = 'hidden'; },
+    redraw() {
+      const m = this._map; if (!m) return;
+      const c = this._c, sz = m.getSize(), r = window.devicePixelRatio || 1;
+      L.DomUtil.setPosition(c, m.containerPointToLayerPoint([0, 0]));
+      if (c.width !== Math.round(sz.x * r) || c.height !== Math.round(sz.y * r)) {
+        c.width = Math.round(sz.x * r); c.height = Math.round(sz.y * r); c.style.width = sz.x + 'px'; c.style.height = sz.y + 'px';
+      }
+      const g = c.getContext('2d'); g.setTransform(r, 0, 0, r, 0, 0); g.clearRect(0, 0, sz.x, sz.y); c.style.visibility = 'visible';
+      this.pts = [];
+      if (!lite) return;
+      const now = Date.now(), k = m.getZoom() <= 3 ? .42 : m.getZoom() <= 5 ? .55 : .7;
+      for (const p of planes.values()) {
+        if (!p.vis || p.d.id === selected) continue;
+        const pt = m.latLngToContainerPoint(project(p.d, now));
+        if (pt.x < -12 || pt.y < -12 || pt.x > sz.x + 12 || pt.y > sz.y + 12) continue;
+        g.setTransform(r, 0, 0, r, 0, 0); g.translate(pt.x, pt.y); g.rotate(toRad(p.d.track ?? 0)); g.scale(k, k); g.translate(-12, -12);
+        g.fillStyle = EMERG[p.d.squawk] ? '#ef4444' : altColor(p.d.alt, p.d.ground); g.fill(PATH2D);
+        this.pts.push([pt.x, pt.y, p.d.id]);
+      }
+    },
+    hit(cp) {
+      let best = null, bd = 16 * 16;
+      for (const [x, y, id] of this.pts || []) { const dd = (x - cp.x) ** 2 + (y - cp.y) ** 2; if (dd < bd) { bd = dd; best = id; } }
+      return best;
+    }
+  });
+  const planeCanvas = new PlaneCanvas().addTo(map);
+  map.on('zoomend', () => syncDisplay());
+  function syncDisplay() {
+    let n = 0;
+    for (const p of planes.values()) { p.vis = visibleByFilter(p.d); if (p.vis) n++; }
+    lite = n > (map.getZoom() <= 5 ? 200 : LITE_MAX);   // étiquettes illisibles en vue large
+    for (const p of planes.values()) {
+      const want = p.d.id === selected || (!lite && p.vis);
+      if (want && !acLayer.hasLayer(p.marker)) acLayer.addLayer(p.marker);
+      else if (!want && acLayer.hasLayer(p.marker)) acLayer.removeLayer(p.marker);
+    }
+    $('sCount').textContent = nf.format(n);
+    planeCanvas.redraw();
   }
   function project(d, now) {
     if (d.ground || !d.gs || d.track == null) return [d.lat, d.lon];
@@ -258,9 +345,6 @@
         p.trail.push([d.lat, d.lon, d.ground ? 0 : d.alt ?? 0, d.fix]);
         if (p.trail.length > 600) p.trail.shift();
       }
-      const show = visibleByFilter(d) || d.id === selected;
-      if (show && !acLayer.hasLayer(p.marker)) acLayer.addLayer(p.marker);
-      else if (!show && acLayer.hasLayer(p.marker)) acLayer.removeLayer(p.marker);
       p.marker.setLatLng(project(d, Date.now()));
       paint(p);
     }
@@ -272,7 +356,8 @@
       acLayer.removeLayer(p.marker); planes.delete(id);
       if (id === selected) { toast('Signal perdu pour ' + (p.d.callsign || id.toUpperCase())); deselect(); }
     }
-    $('sCount').textContent = nf.format([...planes.values()].filter((p) => acLayer.hasLayer(p.marker)).length);
+    syncDisplay();
+    if (pendingFit) fitCie();
     if (selected) updateCard();
     if (!$('list').hidden) renderList();
     if (pendingHash && planes.has(pendingHash)) { const h = pendingHash; pendingHash = null; select(h, true); }
@@ -280,7 +365,9 @@
 
   /* ---------- Boucle de mise à jour ---------- */
   let timer = null, busy = false, simSince = 0;
-  const order = () => (S.source === 'auto' ? ['adsblol', 'opensky', 'sim'] : [S.source]);
+  const order = () => (S.source !== 'auto' ? [S.source] : worldView() ? ['opensky', 'adsblol', 'sim'] : ['adsblol', 'opensky', 'sim']);
+  const pause = {};   // source → instant jusqu'auquel elle n'est plus essayée (quota épuisé)
+  const ivOf = (k) => sources[k].interval;
   async function refresh() {
     if (busy) return; busy = true; clearTimeout(timer);
     let list = order();
@@ -288,6 +375,7 @@
     if (S.source === 'auto' && curSource === 'sim' && Date.now() - simSince < 60e3) list = ['sim'];
     let ok = false;
     for (const k of list) {
+      if (S.source === 'auto' && pause[k] > Date.now()) continue;
       try {
         const data = await sources[k].fetch();
         if (curSource !== k) {
@@ -299,11 +387,12 @@
         break;
       } catch (e) {
         console.warn('Source ' + k + ' indisponible :', e.message || e);
+        if (/HTTP 429/.test(e.message || '')) pause[k] = Date.now() + 10 * 60e3;
       }
     }
     setStatus(ok);
     busy = false;
-    timer = setTimeout(refresh, curSource ? sources[curSource].interval : 15000);
+    timer = setTimeout(refresh, curSource ? ivOf(curSource) : 15000);
   }
   function clearAll() { acLayer.clearLayers(); trailLayer.clearLayers(); planes.clear(); if (selected) deselect(); }
   function setStatus(ok) {
@@ -328,6 +417,7 @@
       if (b.contains(ll) || p.d.id === selected) p.marker.setLatLng(ll);
     }
     if (selected && follow) { const p = planes.get(selected); if (p) map.panTo(p.marker.getLatLng(), { animate: true, duration: .8 }); }
+    if (lite) planeCanvas.redraw();
   }, 1000);
 
   /* ---------- Sélection et fiche ---------- */
@@ -349,7 +439,8 @@
   function deselect() {
     const p = selected && planes.get(selected);
     selected = null; follow = false; $('bFollow').classList.remove('on');
-    if (p) { paint(p); if (!visibleByFilter(p.d)) acLayer.removeLayer(p.marker); }
+    if (p) paint(p);
+    syncDisplay();
     trailLayer.clearLayers();
     $('card').hidden = true; document.body.classList.remove('has-sheet');
     history.replaceState(null, '', location.pathname + location.search);
@@ -462,7 +553,7 @@
   /* ---------- Liste des vols ---------- */
   function renderList() {
     const b = map.getBounds(), c = map.getCenter();
-    let rows = [...planes.values()].filter((p) => acLayer.hasLayer(p.marker) && b.contains(p.marker.getLatLng())).map((p) => p.d);
+    let rows = [...planes.values()].filter((p) => (p.vis || p.d.id === selected) && b.contains(p.marker.getLatLng())).map((p) => p.d);
     const k = $('lSort').value;
     const cmp = {
       alt: (a, z) => (z.ground ? 0 : z.alt ?? 0) - (a.ground ? 0 : a.alt ?? 0),
@@ -480,6 +571,42 @@
   }
   $('lBody').addEventListener('click', (e) => { const tr = e.target.closest('tr[data-id]'); if (tr) select(tr.dataset.id, true); });
   $('lSort').addEventListener('change', renderList);
+
+  /* ---------- Compagnies aériennes ---------- */
+  let pendingFit = false;
+  const sansAccent = (v) => String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+  {
+    const fc = $('fCie');
+    [...(D.compagnies || [])].sort((a, z) => a[2].localeCompare(z[2], 'fr')).forEach(([iata, oaci, nom]) => {
+      const o = new Option(`${nom} (${iata})`, oaci); o.dataset.nom = nom; fc.add(o);
+    });
+  }
+  /* Filtre compagnie : seuls ses avions sont affichés ; la carte passe en vue monde pour les voir tous. */
+  function setCie(codes, nom, world) {
+    S.cie = codes; S.cieNom = nom; save(); syncFilters(); applyFilters();
+    if (codes && world) {
+      pendingFit = true;
+      if (map.getZoom() > 3) map.setView([35, 5], 2); else refresh();
+      toast(`Recherche des avions ${nom} dans le monde…`);
+    }
+  }
+  function fitCie() {
+    const pts = [...planes.values()].filter((p) => p.vis).map((p) => p.marker.getLatLng());
+    if (!pts.length) return;
+    pendingFit = false;
+    toast(`${nf.format(pts.length)} avion${pts.length > 1 ? 's' : ''} ${S.cieNom || S.cie} en vol.`);
+    if (pts.length > 1) map.fitBounds(L.latLngBounds(pts).pad(.15), { maxZoom: 7 }); else map.setView(pts[0], 7);
+  }
+  function cieHits(raw, s) {
+    const out = [], u = sansAccent(raw);
+    for (const [iata, oaci, nom] of D.compagnies || []) {
+      const codes = oaci.split(' ');
+      const exact = iata === s || codes.includes(s), byName = u.length >= 3 && sansAccent(nom).includes(u);
+      if (exact || byName) out.push({ kind: 'cie', codes: oaci, nom, iata, exact });
+    }
+    if (/^[A-Z]{3}$/.test(s) && !out.some((h) => h.codes.split(' ').includes(s))) out.push({ kind: 'cie', codes: s, nom: `Indicatifs ${s}…`, iata: '', exact: true });
+    return out.sort((a, z) => z.exact - a.exact).slice(0, 4);
+  }
 
   /* ---------- Recherche ---------- */
   const q = $('q'), qres = $('qres');
@@ -511,7 +638,10 @@
   function render() {
     const all = hits.concat(remote.filter((r) => !hits.some((h) => h.d && h.d.id === r.d.id)));
     hits = all; hi = 0;
-    qres.innerHTML = all.map((h, i) => h.kind === 'apt'
+    const cieN = (codes) => [...planes.values()].filter((p) => cieOf(p.d.callsign, codes)).length;
+    qres.innerHTML = all.map((h, i) => h.kind === 'cie'
+      ? `<li data-i="${i}" class="${i ? '' : 'sel'}"><span>🏢 ${esc(h.nom)}${h.iata ? ` <em class="code">${esc(h.iata)} · ${esc(h.codes.replace(/ /g, ', '))}</em>` : ''}</span><small>Compagnie — voir tous ses avions dans le monde (${nf.format(cieN(h.codes))} sur la carte)</small></li>`
+      : h.kind === 'apt'
       ? `<li data-i="${i}" class="${i ? '' : 'sel'}"><span>◉ ${esc(h.a[0])} — ${esc(h.a[2])}</span><small>Aéroport</small></li>`
       : `<li data-i="${i}" class="${i ? '' : 'sel'}"><span>✈ ${esc(acTitle(h.d))}${h.kind === 'remote' ? '<em>hors de la carte</em>' : ''}</span><small>${esc(acLine(h.d))}</small></li>`).join('')
       + (rState === 'busy' ? '<li class="muted">Recherche dans le monde entier…</li>' : '')
@@ -523,11 +653,11 @@
     clearTimeout(rTimer); rSeq++; remote = []; rState = '';
     if (s.length < 2) { qres.hidden = true; return; }
     const keys = flightKeys(s);
-    hits = [];
+    hits = keys.length ? [] : cieHits(raw, s);
     for (const p of planes.values()) {
       const d = p.d;
       if (matchesKey(d.callsign, keys) || [d.callsign, d.reg, d.hex.toUpperCase(), d.type].some((v) => v && norm(v).includes(s))) hits.push({ kind: 'ac', d });
-      if (hits.length >= 12) break;
+      if (hits.length >= 14) break;
     }
     for (const a of D.aeroports) {
       if (hits.length >= 18) break;
@@ -556,6 +686,7 @@
     const h = hits[i]; if (!h) return;
     qres.hidden = true; q.value = ''; q.blur();
     if (h.kind === 'apt') return map.setView([h.a[3], h.a[4]], 10);
+    if (h.kind === 'cie') { if (selected) deselect(); return setCie(h.codes, h.nom, true); }
     if (planes.has(h.d.id)) return select(h.d.id, true);
     // avion hors de la zone : on y va, puis il est sélectionné au prochain chargement
     pendingHash = h.d.id; map.setView([h.d.lat, h.d.lon], 8);
@@ -605,7 +736,11 @@
     if (selected) { deselect(); return true; }
     return false;
   };
-  map.on('click', () => { if (selected) deselect(); hidePanels(); });
+  map.on('click', (e) => {
+    const id = lite && planeCanvas.hit(e.containerPoint);
+    if (id) { select(id); return; }
+    if (selected) deselect(); hidePanels();
+  });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && document.activeElement !== q) { deselect(); hidePanels(); } });
 
   $('bFollow').addEventListener('click', () => {
@@ -636,16 +771,15 @@
     $('oMin').textContent = altLbl(S.minAlt); $('oMax').textContent = altLbl(S.maxAlt);
     $('fGround').checked = S.hideGround; $('fLabels').checked = S.labels; $('fAirports').checked = S.airports;
     $('fUnits').value = S.units; $('fSource').value = S.source;
+    const fc = $('fCie');
+    if (S.cie && ![...fc.options].some((o) => o.value === S.cie)) fc.add(new Option(S.cieNom || S.cie, S.cie));
+    fc.value = S.cie;
+    $('sCie').hidden = !S.cie; $('sCieN').textContent = S.cieNom || S.cie;
     document.body.classList.toggle('nolabels', !S.labels);
     document.body.classList.toggle('noairports', !S.airports);
   }
   function applyFilters() {
-    for (const p of planes.values()) {
-      const show = visibleByFilter(p.d) || p.d.id === selected;
-      if (show && !acLayer.hasLayer(p.marker)) acLayer.addLayer(p.marker);
-      else if (!show && acLayer.hasLayer(p.marker)) acLayer.removeLayer(p.marker);
-    }
-    $('sCount').textContent = nf.format([...planes.values()].filter((p) => acLayer.hasLayer(p.marker)).length);
+    syncDisplay();
     if (!$('list').hidden) renderList();
     if (selected) updateCard();
   }
@@ -654,6 +788,8 @@
   $('fGround').addEventListener('change', (e) => { S.hideGround = e.target.checked; applyFilters(); save(); });
   $('fLabels').addEventListener('change', (e) => { S.labels = e.target.checked; syncFilters(); save(); });
   $('fAirports').addEventListener('change', (e) => { S.airports = e.target.checked; syncFilters(); save(); });
+  $('fCie').addEventListener('change', (e) => { const o = e.target.selectedOptions[0]; setCie(e.target.value, e.target.value ? o.dataset.nom || o.text : '', !!e.target.value); });
+  $('sCie').addEventListener('click', () => setCie('', ''));
   $('fUnits').addEventListener('change', (e) => { S.units = e.target.value; syncFilters(); applyFilters(); save(); });
   $('fSource').addEventListener('change', (e) => { S.source = e.target.value; save(); clearAll(); curSource = null; simSince = 0; refresh(); });
 
