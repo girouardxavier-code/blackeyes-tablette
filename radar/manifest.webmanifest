@@ -1,0 +1,13 @@
+{
+ "name": "Ciel Direct — suivi des vols",
+ "short_name": "Ciel Direct",
+ "start_url": "./",
+ "scope": "./",
+ "display": "standalone",
+ "background_color": "#0b1220",
+ "theme_color": "#0b1220",
+ "lang": "fr",
+ "icons": [
+  { "src": "icone.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+ ]
+}
