@@ -5,7 +5,7 @@
    - Deux doigts : pincer pour zoomer (plan et vue 3D). */
 'use strict';
 (function () {
-  const VERSION = '1.0.9';
+  const VERSION = '1.1.0';
   const files = new Map(); let seq = 0;
   const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   function sheet(html) { const el = document.createElement('div'); el.className = 'tb-sheet'; el.innerHTML = `<div class="tb-box">${html}</div>`; document.body.appendChild(el); return el; }

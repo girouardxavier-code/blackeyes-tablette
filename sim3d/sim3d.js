@@ -90,6 +90,7 @@ async function buildScene(l) {
   // personnages
   SIM.intruder = makePerson({ intrus: true }); scene.add(SIM.intruder.g);
   SIM.pathLine = new THREE.Group(); scene.add(SIM.pathLine);
+  buildSky();
   applyAmbiance();
   // interactions
   bindSimInput(R.domElement);
@@ -580,7 +581,7 @@ function inZone(dev, w) {
 /* ---------------------------------------------------------------- scénario : préparation */
 function resetRun() {
   stopSound(); (SIM.doors || []).forEach(d => { d.forced = false; });
-  const I = SIM.intruder; SIM.t = 0; SIM.clock = SIM.night ? 2 * 3600 + 13 * 60 : 10 * 3600 + 42 * 60; SIM.playing = false; SIM.done = false;
+  const I = SIM.intruder; SIM.t = 0; SIM.clock = startClock(); SIM.playing = false; SIM.done = false;
   SIM.alarm = false; SIM.photos = []; SIM.log = []; SIM.queue = []; SIM.state = 'idle';
   (SIM.lockRoomsInfo || []).filter(r => r.doors).forEach(r => logEv(`Pièce équipée du lockOFF ${r.lock.label || ''}${r.lock.local ? ` (${r.lock.local})` : ''} : ${r.doors} porte${r.doors > 1 ? 's' : ''} fermée${r.doors > 1 ? 's' : ''}.`, 'ok'));
   SIM.markers.forEach(d => { d.fired = false; d.inside = d.role === 'lock' ? dirOf(d.m.rot || 0) : d.inside; if (d.tab) { d.tab.position.set(0.04, -0.02, 0); d.tab.rotation.set(0, 0, 0); d.tab.visible = true; if (d.tab.parent !== d.g) d.g.add(d.tab); } if (d.door) d.door.rotation.set(0, 0, 0); if (d.bar) d.bar.rotation.z = -0.35; if (d.light) d.light.intensity = 0; if (d.acc) d.acc.material.emissiveIntensity = 0.35; });
@@ -892,6 +893,7 @@ function loop() {
     if (d.role === 'siren') { if (d.light) { d.light.color.set(0xffffff); d.light.intensity = strobe ? 14 : 0; d.light.distance = 14; } if (d.acc) { d.acc.material.emissive.set(strobe ? 0xffffff : 0xff1a1a); d.acc.material.emissiveIntensity = strobe ? 5 : 0.3; } return; }
     if (d.light) d.light.intensity = on ? 4 : 0; if (d.acc) { d.acc.material.emissive.set(0xff1a1a); d.acc.material.emissiveIntensity = on ? 3 : 0.2; } });
   updateCam();
+  if (SIM.sky) { SIM.sky.position.copy(SIM.cam.position); updateSky(); }
   SIM.renderer.render(SIM.scene, SIM.cam);
   requestAnimationFrame(loop);
 }
@@ -939,10 +941,72 @@ function banner() {
   const s = $('#sbStop'); if (s) s.onclick = () => { SIM.mode = null; banner(); renderSimSide(); };
 }
 function applyAmbiance() {
-  SIM.hemi.intensity = SIM.night ? 0.35 : 0.95; SIM.sun.intensity = SIM.night ? 0.15 : 0.8;
-  SIM.scene.background.set(SIM.night ? 0x070b14 : 0x9fb3cc); SIM.scene.fog.color.set(SIM.night ? 0x070b14 : 0x9fb3cc);
+  updateSky(true);
   if (SIM.zones) SIM.zones.visible = SIM.zonesOn;
 }
+
+/* ---------------------------------------------------------------- ciel en direct
+   Le ciel suit l'horloge du scénario : position du soleil calculée pour la France (46,5° N) à la date
+   du jour, dégradé du ciel, lueur du lever/coucher, étoiles la nuit. Nord = haut du plan (-Z), est = +X. */
+const SKY_LAT = 46.5 * Math.PI / 180;
+const NIGHT_CLOCK = 2 * 3600 + 13 * 60, DAY_CLOCK = 10 * 3600 + 42 * 60;
+const startClock = () => SIM.startClock ?? (SIM.night ? NIGHT_CLOCK : DAY_CLOCK);
+function sunAt(sec) {
+  const now = new Date(), doy = Math.floor((now - new Date(now.getFullYear(), 0, 0)) / 864e5);
+  const dec = -23.44 * Math.PI / 180 * Math.cos(2 * Math.PI / 365 * (doy + 10));
+  const H = ((((sec / 3600) % 24) + 24) % 24 - 12) * 15 * Math.PI / 180;
+  const el = Math.asin(Math.sin(SKY_LAT) * Math.sin(dec) + Math.cos(SKY_LAT) * Math.cos(dec) * Math.cos(H));
+  const az = Math.atan2(Math.sin(H), Math.cos(H) * Math.sin(SKY_LAT) - Math.tan(dec) * Math.cos(SKY_LAT)) + Math.PI;  // depuis le nord, sens horaire
+  return { el, dir: new THREE.Vector3(Math.cos(el) * Math.sin(az), Math.sin(el), -Math.cos(el) * Math.cos(az)) };
+}
+const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+const mixC = (a, b, t) => new THREE.Color(a).lerp(new THREE.Color(b), t);
+function buildSky() {
+  const mat = new THREE.ShaderMaterial({
+    side: THREE.BackSide, depthWrite: false, fog: false,
+    uniforms: { uTop: { value: new THREE.Color() }, uHor: { value: new THREE.Color() }, uGlow: { value: new THREE.Color() }, uSun: { value: new THREE.Vector3(0, 1, 0) }, uSunVis: { value: 0 } },
+    vertexShader: 'varying vec3 vDir; void main(){ vDir = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: `uniform vec3 uTop, uHor, uGlow, uSun; uniform float uSunVis; varying vec3 vDir;
+      void main(){ vec3 d = normalize(vDir); float h = max(d.y, 0.0);
+        vec3 col = mix(uHor, uTop, pow(h, 0.45));
+        float s = max(dot(d, normalize(uSun)), 0.0);
+        col += uGlow * pow(s, 6.0) * (1.0 - h) * 0.9;
+        col += vec3(1.0, 0.92, 0.75) * pow(s, 400.0) * 0.6 * uSunVis;
+        col = mix(col, vec3(1.0, 0.97, 0.88), smoothstep(0.9993, 0.9997, s) * uSunVis);
+        if (d.y < 0.0) col = mix(col, uHor * 0.55, smoothstep(0.0, -0.15, d.y));
+        gl_FragColor = vec4(col, 1.0); }`
+  });
+  const dome = new THREE.Mesh(new THREE.SphereGeometry(450, 32, 16), mat); dome.renderOrder = -10; dome.frustumCulled = false;
+  const n = 1400, pos = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) { const u = Math.random(), a = Math.random() * Math.PI * 2, y = 0.04 + u * 0.96, r = Math.sqrt(1 - y * y); pos.set([r * Math.cos(a) * 420, y * 420, r * Math.sin(a) * 420], i * 3); }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const stars = new THREE.Points(g, new THREE.PointsMaterial({ color: 0xffffff, size: 1.6, sizeAttenuation: false, transparent: true, opacity: 0, fog: false, depthWrite: false }));
+  stars.renderOrder = -9; stars.frustumCulled = false;
+  SIM.sky = new THREE.Group(); SIM.sky.add(dome, stars); SIM.sky.userData = { mat, stars }; SIM.scene.add(SIM.sky);
+  SIM.skyAt = null;
+}
+function updateSky(force) {
+  if (!SIM.sky) return;
+  const sec = SIM.clock ?? startClock();
+  if (!force && SIM.skyAt != null && Math.abs(sec - SIM.skyAt) < 5) return;
+  SIM.skyAt = sec;
+  const { el, dir } = sunAt(sec), e = el * 180 / Math.PI;
+  const day = smooth(-6, 10, e), tw = Math.max(0, 1 - Math.abs(e - 1) / 9);
+  const top = mixC(0x03060f, 0x3a76c8, day), hor = mixC(0x0b1322, 0xc4d8ee, day).lerp(new THREE.Color(0xe39a6a), tw * 0.55);
+  const u = SIM.sky.userData.mat.uniforms;
+  u.uTop.value.copy(top); u.uHor.value.copy(hor); u.uGlow.value.set(0xff8a3c).multiplyScalar(tw * 0.8 + day * 0.15);
+  u.uSun.value.copy(dir); u.uSunVis.value = smooth(-1.5, 1, e);
+  SIM.sky.userData.stars.material.opacity = 1 - smooth(-12, -3, e);
+  SIM.scene.background.copy(hor); SIM.scene.fog.color.copy(hor);
+  // lumières : soleil le jour, lune (lumière froide et faible) la nuit
+  const lit = e > -2, ldir = lit ? dir.clone() : new THREE.Vector3(-dir.x, 0.8, -dir.z).normalize();
+  if (ldir.y < 0.12) { ldir.y = 0.12; ldir.normalize(); }
+  SIM.sun.position.copy(ldir.multiplyScalar(60));
+  SIM.sun.intensity = lit ? 0.15 + 0.7 * day : 0.15;
+  SIM.sun.color.copy(lit ? mixC(0xffb070, 0xffffff, smooth(0, 20, e)) : new THREE.Color(0x9fb4ff));
+  SIM.hemi.intensity = 0.35 + 0.6 * day; SIM.hemi.color.copy(mixC(0x8da3d6, 0xdfe8ff, day));
+}
+const hhmm = (s) => hhmmss(s).slice(0, 5);
 
 /* ---------------------------------------------------------------- panneau latéral */
 function hud() {
@@ -979,6 +1043,7 @@ function renderSimSide() {
     <section><h2>Journal</h2><div id="sLog" class="sim-log"></div></section>
     <section><h2>Affichage</h2>
       <label class="chk"><input id="sNight" type="checkbox" ${SIM.night ? 'checked' : ''}> Nuit (photos infrarouges)</label>
+      <label class="field"><span id="sHourL">Heure de départ (ciel en direct) : ${hhmm(startClock())}</span><input id="sHour" type="range" min="0" max="23.75" step="0.25" value="${(startClock() / 3600).toFixed(2)}"></label>
       <label class="chk"><input id="sZones" type="checkbox" ${SIM.zonesOn ? 'checked' : ''}> Zones de détection</label>
       <label class="chk"><input id="sWalls" type="checkbox" ${SIM.wallsOn ? 'checked' : ''}> Murs déduits du plan${SIM.wallCount ? ` (${SIM.wallCount} segments)` : ''}</label>
       <label class="chk"><input id="sImg" type="checkbox" ${SIM.imgOn !== false ? 'checked' : ''}> Images des matériels</label>
@@ -1001,7 +1066,10 @@ function renderSimSide() {
   on('sSigTest', 'onclick', () => testSirens());
   on('sExport', 'onclick', () => exportSimReport());
   $$('[data-speed]', side).forEach(b => b.onclick = () => { SIM.speed = +b.dataset.speed; renderSimSide(); });
-  on('sNight', 'onchange', (e) => { SIM.night = e.target.checked; applyAmbiance(); });
+  on('sNight', 'onchange', (e) => { SIM.night = e.target.checked; SIM.startClock = null; if (!SIM.playing && !SIM.t) SIM.clock = startClock(); applyAmbiance(); renderSimSide(); hud(); });
+  on('sHour', 'oninput', (e) => { SIM.startClock = Math.round(+e.target.value * 3600); SIM.night = sunAt(SIM.startClock).el < -2 * Math.PI / 180;
+    if (!SIM.playing && !SIM.t) SIM.clock = SIM.startClock; const l = $('#sHourL'); if (l) l.textContent = `Heure de départ (ciel en direct) : ${hhmm(SIM.startClock)}`; applyAmbiance(); hud(); });
+  on('sHour', 'onchange', () => renderSimSide());
   on('sZones', 'onchange', (e) => { SIM.zonesOn = e.target.checked; applyAmbiance(); });
   on('sWalls', 'onchange', (e) => { SIM.wallsOn = e.target.checked; buildWalls(); lockRooms(); renderSimSide(); });
   on('sImg', 'onchange', (e) => { SIM.imgOn = e.target.checked; SIM.markers.forEach(d => { if (d.sprite) d.sprite.visible = SIM.imgOn; }); });
